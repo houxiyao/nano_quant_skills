@@ -49,6 +49,7 @@ nano_quant_skills/
 | **Claude Code** | 安装为 Command（`/slash` 命令） | 将 SKILL.md 内容适配到 `.claude/commands/` 目录，之后通过 `/tushare-sync` 直接调用 |
 | **GitHub Copilot** | 配置为 Skill | 将目录放入 `.github/skills/`，Copilot Chat 自动识别 |
 | **Qoder** | 配置为 Prompt | 将 SKILL.md 适配到 `.qoder/prompts/` 目录 |
+| **OpenCode** | 配置为 Prompt | 将 SKILL.md 适配到 `.opencode/prompts/` 目录 |
 | **其它 Agent / OpenClaw / Nanobot** | 直接引用 | 在对话中指向 `SKILL.md` 路径即可 |
 
 最稳妥的安装方案为复制如下命令给 AI Agent：
