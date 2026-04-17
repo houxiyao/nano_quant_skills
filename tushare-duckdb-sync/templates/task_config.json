@@ -1,0 +1,19 @@
+[
+  {
+    "endpoint": "接口名（如 stock_basic / daily）",
+    "source_table": "Tushare 表名（通常同 endpoint）",
+    "target_table": "DuckDB 目标表名（如 stk_info / stk_daily）",
+    "mode": "overwrite | append",
+    "dimension_type": "none | trade_date | period",
+    "method": "query（默认）",
+
+    "_comment_optional_below": "以下为可选字段",
+    "start_date": "起始日期 YYYYMMDD（增量/period 模式需要）",
+    "end_date": "结束日期 YYYYMMDD（可选；默认到今天）",
+    "sync_all": false,
+    "sleep_seconds": 0.3,
+    "extra_params": {
+      "_comment": "透传给 Tushare API 的额外参数（如 list_status=L）"
+    }
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "_comment": "表映射注册表 — 记录每张已同步表的 Tushare→DuckDB 映射关系。首次初始化时由 SKILL.md 种子数据创建；每次同步新表后追加条目。",
+  "_schema": {
+    "source_table": "table_sync_state 中记录的名称（历史兼容键）",
+    "target_table": "DuckDB 目标表名",
+    "endpoint": "Tushare API 接口名（实际调用用）",
+    "dimension_type": "none | trade_date | period",
+    "method": "query | {endpoint}（方法调用）",
+    "pk": "主键列，逗号分隔",
+    "doc_id": "Tushare 文档 doc_id",
+    "note": "备注（如 _vip 后缀、特殊调用方式等）"
+  },
+  "tables": [
+  ]
+}
