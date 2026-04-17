@@ -38,15 +38,24 @@ nano_quant_skills/
 
 ### 作为 AI Skill 使用
 
-将本仓库克隆到项目中，配置 AI 工具的 Skill 路径指向对应 `SKILL.md` 即可。
+通过如下自然语言命令，让大模型分析并安装 Skill：
 
-### 作为独立脚本使用
+> 请阅读 `nano_quant_skills/tushare-duckdb-sync/SKILL.md`，将其安装为你可调用的 Skill。
 
-```bash
-cd tushare-duckdb-sync/scripts
-pip install tushare duckdb pandas loguru
-export TUSHARE_TOKEN=你的token
-python sync_table.py --endpoint daily --duckdb-path ./ashare.duckdb --target-table stk_daily --mode append --dimension-type trade_date --start-date 20240101 --sync-all
+**各工具安装方式：**
+
+| AI 工具 | 推荐安装方式 | 说明 |
+|---|---|---|
+| **Claude Code** | 安装为 Command（`/slash` 命令） | 将 SKILL.md 内容适配到 `.claude/commands/` 目录，之后通过 `/tushare-sync` 直接调用 |
+| **GitHub Copilot** | 配置为 Skill | 将目录放入 `.github/skills/`，Copilot Chat 自动识别 |
+| **Qoder** | 配置为 Prompt | 将 SKILL.md 适配到 `.qoder/prompts/` 目录 |
+| **其它 Agent / OpenClaw / Nanobot** | 直接引用 | 在对话中指向 `SKILL.md` 路径即可 |
+
+最稳妥的安装方案为复制如下命令给 AI Agent：
+```
+1. 阅读 `https://github.com/shadowinlife/nano_quant_skills` 项目，理解其文件结构和设计原则。
+2. 将仓库中所有的SKILLS安装为你可调用的 Skills 或者 Commands，确保用户能使用它们
+3. 如果本地已经存在 `tushare-duckdb-sync` 目录，比较内容差异后进行升级,**必须保留本地修改备份以便恢复**。
 ```
 
 ## 许可
