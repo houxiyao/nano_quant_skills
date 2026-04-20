@@ -4,6 +4,11 @@
 支持三种维度：none（全量覆盖）、trade_date（按交易日增量）、period（按报告期增量）。
 同步状态记录在 DuckDB 内部的 table_sync_state 表中，支持断点续传。
 
+对 trade_date 维度，脚本默认采用 Asia/Shanghai 18:00 的安全截止规则：
+- 未显式传入 --end-date 时，18:00 前默认只同步到上一个开放交易日
+- 增量维度返回空 payload 时，默认记失败而不是成功，避免误标记
+- 只有显式传入 --allow-empty-result 时，才允许 0 行结果记成功
+
 依赖：pip install tushare duckdb pandas loguru
 
 用法示例::
@@ -39,13 +44,18 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
 import pandas as pd
 from loguru import logger
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - Python < 3.9 fallback
+    ZoneInfo = None
 
 # ---------------------------------------------------------------------------
 # Tushare client (cached singleton)
@@ -74,6 +84,7 @@ def _get_tushare_client():
 # ---------------------------------------------------------------------------
 
 VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_PUBLISH_CUTOFF_HOUR = 18
 
 
 class SyncError(Exception):
@@ -113,6 +124,29 @@ def _normalize_date(text: str) -> str:
         except ValueError:
             continue
     raise SyncError("Invalid date format. Use YYYYMMDD or YYYY-MM-DD", {"date": text})
+
+
+def _now_shanghai() -> datetime:
+    if ZoneInfo is None:
+        return datetime.now()
+    return datetime.now(ZoneInfo("Asia/Shanghai"))
+
+
+def _parse_params(params: Any) -> Dict[str, object]:
+    if params is None or params == "":
+        return {}
+    if isinstance(params, dict):
+        return dict(params)
+    if isinstance(params, str):
+        parsed = json.loads(params)
+        if not isinstance(parsed, dict):
+            raise SyncError("--params must be a JSON object", {"params": params})
+        return parsed
+    raise SyncError("--params must be a JSON object", {"params_type": type(params).__name__})
+
+
+def _allow_empty_result(args) -> bool:
+    return bool(getattr(args, "allow_empty_result", False))
 
 
 # ---------------------------------------------------------------------------
@@ -197,15 +231,51 @@ def _get_report_periods(start: str, end: str) -> List[str]:
     return sorted(pd.date_range(start=s, end=e, freq="QE-DEC").strftime("%Y%m%d").tolist())
 
 
+def _resolve_trade_date_end(client, args) -> str:
+    if args.end_date:
+        return _normalize_date(args.end_date)
+
+    now_sh = _now_shanghai()
+    today = now_sh.strftime("%Y%m%d")
+    if bool(getattr(args, "disable_safe_trade_date", False)):
+        return today
+
+    cutoff_hour = int(getattr(args, "publish_cutoff_hour", DEFAULT_PUBLISH_CUTOFF_HOUR))
+    if now_sh.hour >= cutoff_hour:
+        return today
+
+    lookback_start = (now_sh - timedelta(days=14)).strftime("%Y%m%d")
+    open_days = _get_trade_dates(client, lookback_start, today)
+    prior_open_days = [day for day in open_days if day < today]
+    if prior_open_days:
+        safe_end = prior_open_days[-1]
+        _log_event(
+            "safe_trade_date_applied",
+            {
+                "today": today,
+                "effective_end_date": safe_end,
+                "publish_cutoff_hour": cutoff_hour,
+                "timezone": "Asia/Shanghai",
+            },
+        )
+        return safe_end
+    return today
+
+
 def _resolve_dimensions(con, fq_state, client, source_table, args) -> List[str]:
     if args.dimension_type == "none":
         return [""]
-    today = datetime.now().strftime("%Y%m%d")
     start = _normalize_date(args.start_date or ("20100101" if args.dimension_type == "trade_date" else "20100331"))
-    end = _normalize_date(args.end_date or today)
     if args.dimension_type == "trade_date":
+        end = _resolve_trade_date_end(client, args)
+        if start > end:
+            raise SyncError(
+                "No safe trade_date window is available yet. Retry after the publish cutoff or pass an explicit --end-date.",
+                {"start_date": start, "effective_end_date": end},
+            )
         values = _get_trade_dates(client, start, end)
     elif args.dimension_type == "period":
+        end = _normalize_date(args.end_date or datetime.now().strftime("%Y%m%d"))
         values = _get_report_periods(start, end)
     else:
         raise SyncError("Unsupported dimension_type", {"dimension_type": args.dimension_type})
@@ -222,9 +292,7 @@ def _resolve_dimensions(con, fq_state, client, source_table, args) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def _fetch(client, args, dim_value: str) -> pd.DataFrame:
-    kwargs: Dict[str, object] = {}
-    if args.params:
-        kwargs.update(json.loads(args.params))
+    kwargs: Dict[str, object] = _parse_params(args.params)
     if args.dimension_type != "none":
         field = args.dimension_field or args.dimension_type
         kwargs[field] = dim_value
@@ -232,10 +300,13 @@ def _fetch(client, args, dim_value: str) -> pd.DataFrame:
     last_exc = None
     for attempt in range(1, args.max_retries + 1):
         try:
-            if args.method == "query":
+            method_name = args.method or "query"
+            if method_name == "query":
                 df = client.query(args.endpoint, **kwargs)
             else:
-                df = getattr(client, args.method)(**kwargs)
+                if not hasattr(client, method_name):
+                    raise SyncError("Unsupported Tushare method", {"method": method_name})
+                df = getattr(client, method_name)(**kwargs)
             if not isinstance(df, pd.DataFrame):
                 raise SyncError("Tushare did not return a DataFrame")
             return df.copy()
@@ -246,6 +317,24 @@ def _fetch(client, args, dim_value: str) -> pd.DataFrame:
                 logger.warning(f"Fetch attempt {attempt}/{args.max_retries} failed: {exc}, retry in {wait:.1f}s")
                 time.sleep(wait)
     raise SyncError(f"Fetch failed after {args.max_retries} retries: {last_exc}")
+
+
+def _ensure_expected_rows(df: pd.DataFrame, source: str, target: str, dim_value: str, args) -> None:
+    if args.dimension_type == "none" or _allow_empty_result(args) or not df.empty:
+        return
+
+    raise SyncError(
+        (
+            "Empty payload returned from Tushare for incremental sync; "
+            "not marking as successful. Retry after the publish cutoff or use --allow-empty-result if zero rows are expected."
+        ),
+        {
+            "source_table": source,
+            "target_table": target,
+            "dimension_type": args.dimension_type,
+            "dimension_value": dim_value,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +483,7 @@ def sync_one_table(args) -> Dict[str, object]:
         for dim in dims:
             try:
                 df = _fetch(client, args, dim)
+                _ensure_expected_rows(df, source, target, dim, args)
                 total_rows, loaded = _write(con, df, target, args.mode, first_batch)
                 first_batch = False
                 processed += 1
@@ -452,6 +542,22 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-retries", type=int, default=3, help="Max fetch retries (default: 3)")
     p.add_argument("--base-sleep", type=float, default=2.0, help="Retry backoff base seconds")
     p.add_argument("--sleep", type=float, default=0.3, help="Sleep between successful calls")
+    p.add_argument(
+        "--allow-empty-result",
+        action="store_true",
+        help="Treat empty payload as success. Use only when zero rows are semantically valid.",
+    )
+    p.add_argument(
+        "--disable-safe-trade-date",
+        action="store_true",
+        help="Disable the default Asia/Shanghai publish-cutoff guard for trade_date sync when --end-date is omitted.",
+    )
+    p.add_argument(
+        "--publish-cutoff-hour",
+        type=int,
+        default=DEFAULT_PUBLISH_CUTOFF_HOUR,
+        help="Asia/Shanghai hour after which today's trade_date is treated as safe when --end-date is omitted.",
+    )
     p.add_argument("--tasks-file", default=None, help="JSON file with array of task objects (batch mode)")
     return p
 
@@ -466,9 +572,12 @@ def _merge_task(base_args, task: dict):
         "mode": "mode", "dimension_type": "dimension_type",
         "dimension_field": "dimension_field",
         "start_date": "start_date", "end_date": "end_date",
-        "sync_all": "sync_all", "params": "params",
+        "sync_all": "sync_all", "params": "params", "extra_params": "params",
         "max_retries": "max_retries", "base_sleep": "base_sleep",
         "sleep": "sleep", "sleep_seconds": "sleep",
+        "allow_empty_result": "allow_empty_result",
+        "disable_safe_trade_date": "disable_safe_trade_date",
+        "publish_cutoff_hour": "publish_cutoff_hour",
     }
     for json_key, attr in field_map.items():
         if json_key in task:

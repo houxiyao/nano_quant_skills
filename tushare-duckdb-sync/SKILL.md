@@ -165,6 +165,13 @@ tushare-duckdb-sync/
 - `sync_all=false`（拉取 start_date 到今天的全部维度值）。
 - `mode=append`。
 
+#### 交易日安全截止规则
+
+- 对 `trade_date` 维度的盘后行情、资金流、因子类接口，默认以 `Asia/Shanghai 18:00` 作为当天数据的安全发布时间。
+- 如果当前时间早于 18:00 且用户没有显式提供 `end_date`，Agent 或脚本必须把有效截止日收敛到 **上一个开放交易日**，而不是盲目拉今天。
+- 如果用户显式要求同步今天，而 Tushare 返回空 payload，必须将该维度写为 **失败状态**，不得写成成功。
+- 只有在“0 行结果本来就符合业务语义”的接口上，才允许显式开启 `allow_empty_result` 把空结果记成功。
+
 ### Step 4：执行数据同步
 
 #### 4a. 构建同步参数
@@ -212,17 +219,25 @@ TUSHARE_TOKEN=xxx python sync_table.py \
 
 > `sync_table.py` 是自包含脚本，不依赖本项目其它模块。Agent 只需填入参数即可执行。
 
+社区脚本的默认安全行为：
+- `trade_date` 且未传 `end_date` 时，18:00 前自动只同步到上一个开放交易日。
+- 增量维度拿到空 payload 时，默认写失败状态，等待重试。
+- 如确需接受 0 行成功，显式加 `--allow-empty-result`。
+
 #### 4c. 处理常见错误
 - **网络超时**：自动重试（已内置 `max_retries`），失败后单独重跑该表。
 - **API 限频**：调整 `--sleep`（默认 0.3s）。
 - **字段不匹配**：脚本自动丢弃目标表不存在的列（warning 日志），在元数据文档的「Tushare ↔ DuckDB 字段差异」中记录。
 - **VARCHAR→DATE 类型冲突**：脚本已内置 `_coerce_dates` 自动转换。
+- **空 payload**：对增量维度默认记失败，不记成功。先确认是否早于 `Asia/Shanghai 18:00`，或是否需要把 `end_date` 改成上一个开放交易日。
 
 ### Step 5：写入同步状态
 
 > `table_sync_state` 是增量续传的基础，是三项资产之一（运维记录），必须及时更新。
 
 `sync_table.py` 在 `dimension_type != "none"` 时自动写入 `table_sync_state`。
+
+补充规则：对增量维度，**空 payload 默认写 `is_sync=0`**，避免把“上游未发布”误写成“成功同步”。
 
 对于 `none` 维度表，手动执行：
 ```sql

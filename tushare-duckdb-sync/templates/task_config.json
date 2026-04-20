@@ -12,7 +12,9 @@
     "end_date": "结束日期 YYYYMMDD（可选；默认到今天）",
     "sync_all": false,
     "sleep_seconds": 0.3,
-    "extra_params": {
+    "publish_cutoff_hour": 18,
+    "allow_empty_result": false,
+    "params": {
       "_comment": "透传给 Tushare API 的额外参数（如 list_status=L）"
     }
   }

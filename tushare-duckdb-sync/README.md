@@ -16,6 +16,13 @@ pip install tushare duckdb pandas loguru
 export TUSHARE_TOKEN=你的token  # https://tushare.pro 注册后在个人主页获取
 ```
 
+### 交易日安全窗口
+
+- 对 `daily`、`moneyflow`、`stk_factor_pro`、`idx_factor_pro` 等盘后更新表，建议在 `Asia/Shanghai 18:00` 后同步当天数据。
+- 当 `--dimension-type trade_date` 且未显式传入 `--end-date` 时，脚本默认会在 18:00 前把截止日收敛到上一个开放交易日，避免把当天空 payload 误记成功。
+- 如果你显式强拉今天，而上游还没出数，脚本会把该维度写成失败状态，等待后续重试。
+- 只有在“0 行结果本来就是正确业务语义”的场景下，才应显式使用 `--allow-empty-result`。
+
 ### 全量同步（无维度表，如股票列表）
 
 ```bash
@@ -42,6 +49,8 @@ python sync_table.py \
 ```
 
 `--sync-all` 启用断点续传：已同步的交易日会自动跳过，中断后重跑即可继续。
+
+如果在 18:00 前执行且未传 `--end-date`，脚本默认只会同步到上一个开放交易日。
 
 ### 按报告期同步（如财务报表）
 
@@ -116,6 +125,9 @@ python check_quality.py \
 | `--params` | 否 | — | 额外 Tushare 参数（JSON 字符串） |
 | `--sleep` | 否 | `0.3` | 每次调用间隔（秒），防限频 |
 | `--max-retries` | 否 | `3` | 失败重试次数 |
+| `--allow-empty-result` | 否 | false | 允许空 payload 记成功，仅适用于 0 行本来就是合法结果的接口 |
+| `--disable-safe-trade-date` | 否 | false | 关闭交易日安全截止规则；未传 `--end-date` 时允许直接尝试今天 |
+| `--publish-cutoff-hour` | 否 | `18` | `Asia/Shanghai` 的发布截止小时；早于该时间默认只同步到上一个开放交易日 |
 | `--tasks-file` | 否 | — | 批量任务 JSON 文件路径（此时 `--endpoint` 非必填） |
 
 ## 同步状态
@@ -124,6 +136,7 @@ python check_quality.py \
 
 - **断点续传**：配合 `--sync-all`，已同步的维度自动跳过。
 - **失败追踪**：`is_sync=0` 的记录包含错误信息，可定向重试。
+- **空 payload 保护**：增量维度默认把空返回记为失败，避免把“上游未发布”误当成“同步成功”。
 
 ## 三种维度类型
 
