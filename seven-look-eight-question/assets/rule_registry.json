@@ -1,0 +1,324 @@
+{
+  "framework": "高效财务分析框架",
+  "methodology": "七看八问",
+  "version": "draft-0",
+  "rules": [
+    {
+      "rule_id": "look-01",
+      "sequence": 1,
+      "category": "look",
+      "title": "一看盈收与利润质量",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "all-fields-present",
+      "tables": [
+        "fin_income",
+        "fin_indicator",
+        "fin_cashflow"
+      ],
+      "derived_metrics": [
+        "profit_dedt",
+        "grossprofit_margin",
+        "netprofit_margin",
+        "profit_to_gr",
+        "n_cashflow_act"
+      ],
+      "missing_data": [],
+      "script": "look-01-profit-quality/scripts/look_01_profit_quality.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "时间窗口默认最近3年，支持人工覆盖。仅取report_type=1合并报表。年报规则为end_date=12-31。营收同时展示revenue与total_revenue。净利率字段按年报去重后的数据质量比较后优先使用netprofit_margin，行级缺失时fallback到profit_to_gr。fin_indicator按最新ann_date_key/ann_date去重。调用时先检测公司类型，金融类公司提示不适用。已拆分为独立 skill：look-01-profit-quality。"
+    },
+    {
+      "rule_id": "look-02",
+      "sequence": 2,
+      "category": "look",
+      "title": "二看费用成本结构",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "all-fields-present-rd-rate-derived",
+      "tables": [
+        "fin_income",
+        "fin_indicator"
+      ],
+      "derived_metrics": [
+        "rdexp_to_gr",
+        "sell_exp_yoy",
+        "admin_exp_yoy",
+        "fin_exp_yoy",
+        "rd_exp_yoy"
+      ],
+      "missing_data": [],
+      "script": "look-02-cost-structure/scripts/look_02_cost_structure.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "分析管理费用率、研发费用率、销售费用率、财务费用率，以及费用增长与营收增长的匹配度。销售、管理、财务费用率使用 fin_indicator 现成字段；研发费用率使用 rd_exp/total_revenue 派生。重点警示销售费用增长但营收增长停滞。调用时先检测公司类型，金融类公司提示不适用。已拆分为独立 skill：look-02-cost-structure。"
+    },
+    {
+      "rule_id": "look-03",
+      "sequence": 3,
+      "category": "look",
+      "title": "三看增长率趋势",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "cagr-direct-acquisition-proxy",
+      "tables": [
+        "fin_income",
+        "fin_balance",
+        "fin_cashflow"
+      ],
+      "derived_metrics": [
+        "revenue_cagr",
+        "n_income_attr_p_cagr",
+        "goodwill_to_assets",
+        "acquisition_cash_to_revenue",
+        "growth_mode_signal"
+      ],
+      "missing_data": [],
+      "script": "look-03-growth-trend/scripts/look_03_growth_trend.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "计算营业收入 CAGR 与归母净利润 CAGR，并通过商誉增长与取得子公司现金支出两个代理信号区分更偏内生增长还是可能包含并购驱动。CAGR 仅在起点和终点均为正数时计算，否则返回 null 与原因说明。调用时先检测公司类型，金融类公司提示不适用。已拆分为独立 skill：look-03-growth-trend。"
+    },
+    {
+      "rule_id": "look-04",
+      "sequence": 4,
+      "category": "look",
+      "title": "四看业务构成与市场分布",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "sw-peers-available-report-text-human-loop",
+      "tables": [
+        "stk_info",
+        "idx_sw_classify",
+        "idx_sw_member_all",
+        "idx_sw_l3_peers"
+      ],
+      "derived_metrics": [
+        "peer_candidate_count",
+        "business_composition_evidence_count",
+        "overseas_sales_evidence_count",
+        "customer_concentration_evidence_count"
+      ],
+      "missing_data": [
+        "annual_report_full_text",
+        "segment_revenue_mix",
+        "regional_sales_split",
+        "single_customer_sales"
+      ],
+      "script": "look-04-business-market-distribution/scripts/look_04_business_market_distribution.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "先用 stk_info 与 idx_sw_l3_peers 提供结构化画像和申万三级同行池，再在缺少年报附注结构化数据时切换为 human-in-loop 工作流：要求提供最近3年年报全文或全文地址，从文本中提取业务构成、海外销售和客户集中度证据，并对同行公司执行同类分析。金融类公司不适用。已拆分为独立 skill：look-04-business-market-distribution。基线验证：000001.SZ 返回 not-applicable；000002.SZ 在无 bundle 时返回 human-in-loop-required 且能命中申万 L3 同行池；1年 synthetic bundle 验证业务构成/海外销售/客户集中度 3 类证据抽取通过。"
+    },
+    {
+      "rule_id": "look-05",
+      "sequence": 5,
+      "category": "look",
+      "title": "五看资产负债健康度",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "cashflow-debt-available-hidden-liability-human-loop",
+      "tables": [
+        "fin_cashflow",
+        "fin_balance",
+        "fin_indicator"
+      ],
+      "derived_metrics": [
+        "ocf_covers_investing",
+        "fcf",
+        "interestdebt",
+        "current_ratio",
+        "debt_to_assets",
+        "leverage_trend"
+      ],
+      "missing_data": [
+        "annual_report_notes_text"
+      ],
+      "script": "look-05-balance-sheet-health/scripts/look_05_balance_sheet_health.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "分析经营现金流覆盖、有息负债、偿债能力、资产负债率、隐性负债。隐性负债需要年报附注全文（human-in-loop）。金融类公司不适用。已拆分为独立 skill：look-05-balance-sheet-health。"
+    },
+    {
+      "rule_id": "look-06",
+      "sequence": 6,
+      "category": "look",
+      "title": "六看投入产出效率",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "all-fields-present",
+      "tables": [
+        "fin_income",
+        "fin_balance",
+        "fin_indicator"
+      ],
+      "derived_metrics": [
+        "wc_per_revenue",
+        "fix_assets_per_revenue",
+        "revenue_per_labor_cost",
+        "wc_trend"
+      ],
+      "missing_data": [],
+      "script": "look-06-input-output-efficiency/scripts/look_06_input_output_efficiency.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "分析营运资金/收入、固定资产/收入、人均投入产出，含行业基准对标。金融类公司不适用。已拆分为独立 skill：look-06-input-output-efficiency。"
+    },
+    {
+      "rule_id": "look-07",
+      "sequence": 7,
+      "category": "look",
+      "title": "七看收益率与资本回报",
+      "status": "implemented",
+      "parallel_lane": "core",
+      "data_status": "all-fields-present",
+      "tables": [
+        "fin_income",
+        "fin_balance",
+        "fin_indicator"
+      ],
+      "derived_metrics": [
+        "roe_dupont",
+        "npm",
+        "at",
+        "em",
+        "roe_driver",
+        "roe_trend"
+      ],
+      "missing_data": [],
+      "script": "look-07-roe-capital-return/scripts/look_07_roe_capital_return.py",
+      "test_status": "passed",
+      "review_status": "reviewed",
+      "notes": "杰邦分解 ROE=NPM×AT×EM，含行业基准对标、负权益保护。默认回看5年。金融类公司不适用。已拆分为独立 skill：look-07-roe-capital-return。"
+    },
+    {
+      "rule_id": "question-01",
+      "sequence": 8,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-02",
+      "sequence": 9,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-03",
+      "sequence": 10,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-04",
+      "sequence": 11,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-05",
+      "sequence": 12,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-06",
+      "sequence": 13,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-07",
+      "sequence": 14,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    },
+    {
+      "rule_id": "question-08",
+      "sequence": 15,
+      "category": "question",
+      "title": "待定义",
+      "status": "spec-needed",
+      "parallel_lane": "unassigned",
+      "data_status": "unknown",
+      "tables": [],
+      "derived_metrics": [],
+      "missing_data": [],
+      "script": null,
+      "test_status": "not-run",
+      "review_status": "not-reviewed",
+      "notes": ""
+    }
+  ]
+}
