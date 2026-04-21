@@ -54,6 +54,73 @@ python .github/skills/seven-look-eight-question/scripts/run_seven_looks.py \
 - **综合报告**: 包含质量评分（A/B/C/D）、红旗预警表、七看概览、human-in-loop 清单、行动建议和量化评语
 - **最多 3 条建议**: 根据分析结果自动推荐下一步操作（补充年报、深挖风险、估值分析等）
 
+### 输出契约
+
+`run_seven_looks.py` 支持两种最终输出格式：
+
+- **markdown**: 面向人工阅读。报告顺序为综合评分、红旗预警、七看概览、待人工补充信息、行动建议、量化评语，最后追加“分项原始分析透传”章节，把每个 look 的原始 JSON 输出附在总结后面，便于核对汇总是否有遗漏或失真。
+- **json**: 面向程序消费。顶层结构稳定包含 `framework`、`stock`、`as_of_date`、`lookback_years`、`quality_score`、`red_flags`、`commentary`、`human_in_loop_requests`、`recommendations`、`results`、`look_results`、`raw_results`、`intermediate_files`。
+
+JSON 中与分项结果相关的 3 个字段职责如下：
+
+| 字段 | 职责边界 | 是否稳定 | 使用建议 |
+|------|----------|----------|----------|
+| `results` | **标准化汇总视图**。每个 look 仅保留 `rule_id`、`title`、`status`、`summary` 四类最小信息，用于统一渲染概览、评语、下游摘要消费。 | 顶层结构稳定；`summary` 的键取决于对应 look 的公开摘要契约。 | 新接入方如只关心统一摘要、状态和评分，优先读取这里。 |
+| `look_results` | **兼容别名**。当前内容与 `results` 完全一致，仅用于兼容历史消费者。 | 兼容保留，语义等同于 `results`。 | 新代码不要单独依赖它的差异语义；如果没有历史包袱，直接用 `results`。 |
+| `raw_results` | **原始透传视图**。每个 look 保留其原始脚本输出，包含明细表、原始分析段落、证据计数、状态字段等，不做摘要裁剪。 | 只保证“按 look 原样透传”的原则；各 look 的内部字段可能随单项脚本演进。 | 需要审计、追溯、复核汇总结论，或读取分项细节时，使用这里。 |
+
+补充约定：
+
+- `results` / `look_results` 的 `summary` 如果上游脚本返回 `null`，统一折算为 `{}`，避免下游处理空对象时出现崩溃。
+- `results` / `look_results` 不承载明细表、原始分析正文或大块证据数据；这些内容只放在 `raw_results`。
+- `raw_results` 的存在不替代 `--output-dir` 下的 7 份中间 JSON 文件。中间文件仍是单个 look 的落盘产物，`raw_results` 是最终汇总输出中的内联透传副本。
+
+最小示意：
+
+```json
+{
+    "results": {
+        "look-05": {
+            "rule_id": "look-05",
+            "title": "资产负债健康度",
+            "status": "partial",
+            "summary": {
+                "leverage_trend": "rising",
+                "hidden_liability_status": "human-in-loop-required"
+            }
+        }
+    },
+    "look_results": {
+        "look-05": {
+            "rule_id": "look-05",
+            "title": "资产负债健康度",
+            "status": "partial",
+            "summary": {
+                "leverage_trend": "rising",
+                "hidden_liability_status": "human-in-loop-required"
+            }
+        }
+    },
+    "raw_results": {
+        "look-05": {
+            "status": "partial",
+            "summary": {
+                "leverage_trend": "rising",
+                "hidden_liability_status": "human-in-loop-required"
+            },
+            "debt_solvency_rows": [
+                {
+                    "debt_to_assets": 72.5
+                }
+            ],
+            "hidden_liability_analysis": {
+                "status": "human-in-loop-required"
+            }
+        }
+    }
+}
+```
+
 ### Human-in-loop 工作流
 
 look-04（业务构成）和 look-05（资产负债健康度）依赖年报全文/附注文本。如果首次运行未提供，脚本会：

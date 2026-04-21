@@ -16,6 +16,11 @@ except ImportError:
 
 
 REPORT_TYPE = "1"
+ROE_DRIVER_THRESHOLDS = {
+    "leverage_driven": {"em_gt": 5.0, "npm_lt": 0.08},
+    "profitability_driven": {"npm_gt": 0.10, "em_lt": 4.0},
+    "turnover_driven": {"at_gt": 1.0, "npm_lt": 0.08},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ def _fetch_dupont_inputs(
 ) -> list[dict[str, Any]]:
     """Fetch balance sheet + income data for DuPont decomposition.
 
-    We fetch lookback_years + 1 extra year to compute averages for the oldest year.
+    We fetch one extra prior year to compute averages for the oldest requested year.
     """
     query = f"""
     WITH params AS (
@@ -184,7 +189,7 @@ def _fetch_indicator_rows(
     )
     SELECT ts_code, end_date, roe, roe_dt, roa, netprofit_margin, assets_turn, debt_to_assets
     FROM ranked
-    WHERE rn2 <= (SELECT lookback_years + 1 FROM params)
+        WHERE rn2 <= (SELECT lookback_years FROM params)
     ORDER BY end_date DESC
     """
     result = con.execute(query, [stock, as_of_date, lookback_years])
@@ -319,7 +324,6 @@ def _compute_dupont(raw_rows: list[dict[str, Any]], lookback_years: int) -> list
             }]
         return []
 
-    # Build a lookup by end_date for prior-year averaging
     by_date = {}
     for row in raw_rows:
         key = row["end_date"]
@@ -329,8 +333,8 @@ def _compute_dupont(raw_rows: list[dict[str, Any]], lookback_years: int) -> list
     sorted_dates = sorted(by_date.keys(), reverse=True)
 
     results = []
-    # Only output lookback_years + 1 rows (the extra row is just for averaging)
-    output_count = min(lookback_years + 1, len(sorted_dates) - 1)
+    # Only output the recent lookback_years rows.
+    output_count = min(lookback_years, len(sorted_dates) - 1)
 
     for i in range(output_count):
         curr_date = sorted_dates[i]
@@ -410,16 +414,15 @@ def _classify_roe_driver(dupont_rows: list[dict[str, Any]]) -> str:
     if npm is None or at is None or em is None:
         return "insufficient-data"
 
-    # Heuristic classification:
-    # High leverage: EM > 5 and NPM < 0.08
-    # Profitability-driven: NPM > 0.10 and EM < 4
-    # Turnover-driven: AT > 1.0 and NPM < 0.08
-    # Otherwise: mixed
-    if em > 5 and npm < 0.08:
+    leverage_rule = ROE_DRIVER_THRESHOLDS["leverage_driven"]
+    profitability_rule = ROE_DRIVER_THRESHOLDS["profitability_driven"]
+    turnover_rule = ROE_DRIVER_THRESHOLDS["turnover_driven"]
+
+    if em > leverage_rule["em_gt"] and npm < leverage_rule["npm_lt"]:
         return "leverage-driven"
-    if npm > 0.10 and em < 4:
+    if npm > profitability_rule["npm_gt"] and em < profitability_rule["em_lt"]:
         return "profitability-driven"
-    if at > 1.0 and npm < 0.08:
+    if at > turnover_rule["at_gt"] and npm < turnover_rule["npm_lt"]:
         return "turnover-driven"
     return "mixed"
 
@@ -478,6 +481,7 @@ def _build_summary(
         "npm_latest": latest.get("npm"),
         "at_latest": latest.get("asset_turnover"),
         "em_latest": latest.get("equity_multiplier"),
+        "roe_driver_thresholds": ROE_DRIVER_THRESHOLDS,
     }
 
 
@@ -573,6 +577,17 @@ def _render_markdown(
     lines.append(f"- npm_latest: {_fmt(summary.get('npm_latest'), pct=True)}")
     lines.append(f"- asset_turnover_latest: {_fmt(summary.get('at_latest'))}")
     lines.append(f"- equity_multiplier_latest: {_fmt(summary.get('em_latest'))}")
+    thresholds = summary.get("roe_driver_thresholds", {})
+    if thresholds:
+        lines.append(
+            "- roe_driver_thresholds: "
+            f"leverage-driven(EM>{thresholds['leverage_driven']['em_gt']}, "
+            f"NPM<{thresholds['leverage_driven']['npm_lt'] * 100:.0f}%); "
+            f"profitability-driven(NPM>{thresholds['profitability_driven']['npm_gt'] * 100:.0f}%, "
+            f"EM<{thresholds['profitability_driven']['em_lt']}); "
+            f"turnover-driven(AT>{thresholds['turnover_driven']['at_gt']}, "
+            f"NPM<{thresholds['turnover_driven']['npm_lt'] * 100:.0f}%)"
+        )
 
     # DuPont Decomposition table
     lines.extend(["", "## DuPont Decomposition", ""])

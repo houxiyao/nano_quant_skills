@@ -59,6 +59,13 @@ $$\text{ROE} = \underbrace{\frac{\text{归母净利润}}{\text{营业收入}}}_{
 | **混合型 (mixed)** | 多因素均衡 |
 | **负ROE** | 亏损状态，不适用分类 |
 
+当前脚本采用以下可审计启发式阈值：
+
+- **leverage-driven**: `EM > 5.0` 且 `NPM < 8%`
+- **profitability-driven**: `NPM > 10%` 且 `EM < 4.0`
+- **turnover-driven**: `AT > 1.0` 且 `NPM < 8%`
+- 其余情况归类为 `mixed`
+
 ### 辅助指标
 
 - `roe`：加权平均净资产收益率（fin_indicator，用于核对）
@@ -78,6 +85,7 @@ $$\text{ROE} = \underbrace{\frac{\text{归母净利润}}{\text{营业收入}}}_{
 2. 只取年报，即 end_date 月份为 12、日期为 31
 3. 仅使用分析日之前已经可见的数据
 4. 金融类公司不适用（银行/保险/证券的杠杆结构与一般工商业差异过大）
+5. 对外输出只返回最近 N 年；为计算最早一年的平均总资产/平均归母净资产，脚本会在内部额外读取上一年数据，但不会计入 `years_returned`
 
 ## 核心数据来源
 

@@ -37,8 +37,8 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-SKILLS_ROOT = Path(__file__).resolve().parents[2]  # repo root (contains look-0x-* dirs)
-PROJECT_ROOT = SKILLS_ROOT                           # same as SKILLS_ROOT for this layout
+SKILLS_ROOT = Path(__file__).resolve().parents[2]  # .github/skills/
+PROJECT_ROOT = SKILLS_ROOT.parents[1]               # repo root
 
 LOOK_SPECS: list[dict[str, Any]] = [
     {
@@ -112,6 +112,40 @@ def _parse_date(value: str | None) -> date:
     if not value:
         return date.today()
     return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def _first_non_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _summary_dict(data: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        return {}
+    summary = data.get("summary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def _is_leverage_trend_deteriorating(trend: str) -> bool:
+    return trend in ("deteriorating", "rising")
+
+
+def _get_look_04_evidence_counts(data: dict[str, Any]) -> tuple[int, int]:
+    summary = _summary_dict(data)
+    target = data.get("target_analysis", {})
+    biz = _first_non_none(
+        summary.get("business_composition_evidence_count"),
+        target.get("business_composition_evidence_count"),
+        0,
+    )
+    overseas = _first_non_none(
+        summary.get("overseas_sales_evidence_count"),
+        target.get("overseas_sales_evidence_count"),
+        0,
+    )
+    return int(biz), int(overseas)
 
 
 def _run_look(
@@ -193,7 +227,7 @@ def _run_look(
 def _extract_flags_01(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-01: profit quality red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     profit_positive_years = summary.get("profit_dedt_positive_years")
     total_years = summary.get("years_returned", 0)
@@ -216,7 +250,7 @@ def _extract_flags_01(data: dict[str, Any]) -> list[tuple[str, str]]:
 def _extract_flags_02(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-02: cost structure red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     mismatch_counts = summary.get("mismatch_counts", {})
     sales_mismatch = mismatch_counts.get("sales_exp_vs_revenue", 0)
@@ -229,7 +263,7 @@ def _extract_flags_02(data: dict[str, Any]) -> list[tuple[str, str]]:
 def _extract_flags_03(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-03: growth trend red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     rev_cagr = summary.get("revenue_cagr")
     if rev_cagr is not None and rev_cagr < -0.05:
@@ -258,11 +292,11 @@ def _extract_flags_04(data: dict[str, Any]) -> list[tuple[str, str]]:
 def _extract_flags_05(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-05: balance sheet health red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
     rows = data.get("debt_solvency_rows", [])
 
     leverage_trend = summary.get("leverage_trend", "")
-    if leverage_trend == "deteriorating":
+    if _is_leverage_trend_deteriorating(leverage_trend):
         flags.append(("杠杆水平持续恶化", "warning"))
 
     # Check debt_to_assets from the latest row
@@ -282,7 +316,7 @@ def _extract_flags_05(data: dict[str, Any]) -> list[tuple[str, str]]:
 def _extract_flags_06(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-06: input-output efficiency red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     wc_trend = summary.get("wc_trend", "")
     if wc_trend == "deteriorating":
@@ -298,7 +332,7 @@ def _extract_flags_06(data: dict[str, Any]) -> list[tuple[str, str]]:
 def _extract_flags_07(data: dict[str, Any]) -> list[tuple[str, str]]:
     """Look-07: ROE & capital return red flags."""
     flags = []
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     driver = summary.get("roe_driver", "")
     if driver == "negative-equity":
@@ -426,7 +460,7 @@ def _generate_recommendations(
         })
 
     # 3. If look-07 shows leverage-driven or negative, suggest investigating capital structure
-    roe_driver = results.get("look-07", {}).get("summary", {}).get("roe_driver", "")
+    roe_driver = _summary_dict(results.get("look-07", {})).get("roe_driver", "")
     if roe_driver in ("leverage-driven", "negative-roe", "negative-equity") and len(recs) < 3:
         recs.append({
             "action": "分析资本结构可持续性",
@@ -441,7 +475,7 @@ def _generate_recommendations(
         })
 
     # 4. If growth is negative, suggest investigating turnaround potential
-    rev_cagr = results.get("look-03", {}).get("summary", {}).get("revenue_cagr")
+    rev_cagr = _summary_dict(results.get("look-03", {})).get("revenue_cagr")
     if rev_cagr is not None and rev_cagr < 0 and len(recs) < 3:
         recs.append({
             "action": "评估收入恢复可能性",
@@ -494,7 +528,7 @@ def _collect_human_requests(results: dict[str, dict[str, Any]]) -> list[dict[str
 
     # Look-05
     r05 = results.get("look-05", {})
-    hidden_status = r05.get("summary", {}).get("hidden_liability_status", "")
+    hidden_status = _summary_dict(r05).get("hidden_liability_status", "")
     if hidden_status == "human-in-loop-required":
         human_reqs = r05.get("human_in_loop_requests", [])
         if isinstance(human_reqs, list) and human_reqs:
@@ -527,6 +561,19 @@ def _render_json(
     recommendations: list[dict[str, str]],
     intermediate_dir: Path | None,
 ) -> str:
+    commentary = _generate_commentary(stock, results, flags, quality)
+    normalized_results = {
+        rid: {
+            "rule_id": rid,
+            "title": next((s["title"] for s in LOOK_SPECS if s["rule_id"] == rid), rid),
+            "status": data.get("status", "unknown"),
+            "summary": _summary_dict(data),
+        }
+        for rid, data in sorted(results.items())
+    }
+    raw_results = {
+        rid: data for rid, data in sorted(results.items())
+    }
     payload = {
         "framework": "七看财务质量综合评估",
         "stock": stock,
@@ -534,17 +581,12 @@ def _render_json(
         "lookback_years": lookback_years,
         "quality_score": quality,
         "red_flags": flags,
+        "commentary": commentary,
         "human_in_loop_requests": human_requests,
         "recommendations": recommendations,
-        "look_results": {
-            rid: {
-                "rule_id": rid,
-                "title": next((s["title"] for s in LOOK_SPECS if s["rule_id"] == rid), rid),
-                "status": data.get("status", "unknown"),
-                "summary": data.get("summary", {}),
-            }
-            for rid, data in sorted(results.items())
-        },
+        "results": normalized_results,
+        "look_results": normalized_results,
+        "raw_results": raw_results,
         "intermediate_files": (
             str(intermediate_dir) if intermediate_dir else None
         ),
@@ -639,6 +681,21 @@ def _render_markdown(
     lines.append(_generate_commentary(stock, results, flags, quality))
     lines.append("")
 
+    # Raw pass-through per look for auditability
+    lines.append("## 分项原始分析透传")
+    lines.append("")
+    lines.append("以下内容为各分项脚本的原始 JSON 输出透传，用于复核汇总结论是否存在遗漏或失真。")
+    lines.append("")
+    for spec in LOOK_SPECS:
+        rid = spec["rule_id"]
+        data = results.get(rid, {})
+        lines.append(f"### {rid} {spec['title']}")
+        lines.append("")
+        lines.append("```json")
+        lines.append(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+        lines.append("```")
+        lines.append("")
+
     # Intermediate files
     if intermediate_dir:
         lines.append("## 中间文件")
@@ -659,7 +716,7 @@ def _summarize_one_look(rule_id: str, data: dict[str, Any]) -> str:
     if status in ("human-in-loop-required",):
         return "需人工补充年报文本"
 
-    summary = data.get("summary", {})
+    summary = _summary_dict(data)
 
     if rule_id == "look-01":
         pos = summary.get("profit_dedt_positive_years", "?")
@@ -681,8 +738,7 @@ def _summarize_one_look(rule_id: str, data: dict[str, Any]) -> str:
         return f"营收CAGR: {rc_str}, 净利润CAGR: {nc_str}, 模式: {mode}"
 
     if rule_id == "look-04":
-        biz = summary.get("business_composition_evidence_count", 0)
-        overseas = summary.get("overseas_sales_evidence_count", 0)
+        biz, overseas = _get_look_04_evidence_counts(data)
         return f"业务构成证据: {biz}条, 海外销售证据: {overseas}条"
 
     if rule_id == "look-05":
@@ -728,14 +784,14 @@ def _generate_commentary(
         parts.append(f"综合评分 {score}/100，严重红旗密集，财务质量极差，强烈建议回避或做深度尽调。")
 
     # Profit quality
-    r01 = results.get("look-01", {}).get("summary", {})
+    r01 = _summary_dict(results.get("look-01", {}))
     ocf_pos = r01.get("operating_cashflow_positive_years")
     total_y = r01.get("years_returned")
     if ocf_pos is not None and total_y and ocf_pos < total_y:
         parts.append(f"利润质量方面，经营现金流仅{ocf_pos}年为正（共{total_y}年），利润含金量不足。")
 
     # Growth
-    r03 = results.get("look-03", {}).get("summary", {})
+    r03 = _summary_dict(results.get("look-03", {}))
     rev_cagr = r03.get("revenue_cagr")
     if rev_cagr is not None:
         if rev_cagr < -0.05:
@@ -744,7 +800,7 @@ def _generate_commentary(
             parts.append(f"增长方面，营收CAGR为{rev_cagr*100:.1f}%，保持较高增速。")
 
     # ROE
-    r07 = results.get("look-07", {}).get("summary", {})
+    r07 = _summary_dict(results.get("look-07", {}))
     driver = r07.get("roe_driver", "")
     if driver == "profitability-driven":
         parts.append("资本回报方面，ROE由盈利能力驱动，属于健康模式。")
@@ -754,9 +810,9 @@ def _generate_commentary(
         parts.append("资本回报方面，公司处于亏损或资不抵债状态，需要高度关注。")
 
     # Balance sheet
-    r05 = results.get("look-05", {}).get("summary", {})
+    r05 = _summary_dict(results.get("look-05", {}))
     lev_trend = r05.get("leverage_trend", "")
-    if lev_trend == "deteriorating":
+    if _is_leverage_trend_deteriorating(lev_trend):
         parts.append("负债健康度方面，杠杆水平逐年攀升，偿债压力持续增大。")
 
     if not parts:

@@ -163,7 +163,7 @@ def _fetch_efficiency_inputs(
         fix_assets, total_assets,
         revenue, n_income_attr_p, c_paid_to_for_empl
     FROM ranked
-    WHERE rn <= (SELECT lookback_years + 1 FROM params)
+    WHERE rn <= (SELECT lookback_years FROM params)
     ORDER BY end_date DESC
     """
     result = con.execute(query, [stock, as_of_date, lookback_years])
@@ -215,7 +215,7 @@ def _fetch_turnover_indicators(
     )
     SELECT ts_code, end_date, ar_turn, fa_turn, assets_turn, ca_turn
     FROM ranked
-    WHERE rn2 <= (SELECT lookback_years + 1 FROM params)
+    WHERE rn2 <= (SELECT lookback_years FROM params)
     ORDER BY end_date DESC
     """
     result = con.execute(query, [stock, as_of_date, lookback_years])

@@ -17,6 +17,12 @@ except ImportError:
 
 
 REPORT_TYPE = "1"
+INTERESTDEBT_COMPONENT_FIELDS = (
+    "st_borr",
+    "lt_borr",
+    "bond_payable",
+    "lease_liab",
+)
 
 HIDDEN_LIABILITY_KEYWORDS = {
     "guarantee": [
@@ -202,7 +208,7 @@ def _fetch_balance_cashflow(
         free_cashflow,
         c_cash_equ_end_period
     FROM ranked
-    WHERE rn <= (SELECT lookback_years + 1 FROM params)
+    WHERE rn <= (SELECT lookback_years FROM params)
     ORDER BY end_date DESC
     """
     result = con.execute(query, [stock, as_of_date, lookback_years])
@@ -282,7 +288,7 @@ def _fetch_indicator_rows(
         interestdebt,
         netdebt
     FROM ranked
-    WHERE rn <= (SELECT lookback_years + 1 FROM params)
+    WHERE rn <= (SELECT lookback_years FROM params)
     ORDER BY end_date DESC
     """
     result = con.execute(query, [stock, as_of_date, lookback_years])
@@ -307,19 +313,26 @@ def _merge_rows(
             "interestdebt", "netdebt",
         ):
             combined[key] = irow.get(key)
-        # derive interest-bearing debt from balance sheet if indicator missing
+        # Only derive interest-bearing debt when all balance-sheet components exist.
         if _is_missing(combined.get("interestdebt")):
-            parts = [
-                _float_or_none(brow.get("st_borr")),
-                _float_or_none(brow.get("lt_borr")),
-                _float_or_none(brow.get("bond_payable")),
-                _float_or_none(brow.get("lease_liab")),
+            component_values = {
+                field: _float_or_none(brow.get(field))
+                for field in INTERESTDEBT_COMPONENT_FIELDS
+            }
+            missing_components = [
+                field for field, value in component_values.items() if value is None
             ]
-            valid = [p for p in parts if p is not None]
-            combined["interestdebt"] = sum(valid) if valid else None
+            if not missing_components:
+                combined["interestdebt"] = sum(component_values.values())
+            else:
+                combined["interestdebt"] = None
             combined["interestdebt_derived"] = True
+            combined["interestdebt_complete"] = not missing_components
+            combined["interestdebt_missing_components"] = missing_components
         else:
             combined["interestdebt_derived"] = False
+            combined["interestdebt_complete"] = True
+            combined["interestdebt_missing_components"] = []
         merged.append(combined)
     return merged
 
@@ -529,6 +542,13 @@ def _build_summary(
     def _missing_count(field: str) -> int:
         return sum(1 for r in merged_rows if _is_missing(r.get(field)))
 
+    def _incomplete_interestdebt_count() -> int:
+        return sum(
+            1
+            for r in merged_rows
+            if r.get("interestdebt_derived") and not r.get("interestdebt_complete", True)
+        )
+
     return {
         "years_returned": len(merged_rows),
         "latest_end_date": latest["end_date"].isoformat() if isinstance(latest["end_date"], date) else str(latest["end_date"]),
@@ -541,6 +561,7 @@ def _build_summary(
         "missing_counts": {
             "n_cashflow_act": _missing_count("n_cashflow_act"),
             "interestdebt": _missing_count("interestdebt"),
+            "interestdebt_incomplete": _incomplete_interestdebt_count(),
             "current_ratio": _missing_count("current_ratio"),
             "debt_to_assets": _missing_count("debt_to_assets"),
             "ebit_to_interest": _missing_count("ebit_to_interest"),
