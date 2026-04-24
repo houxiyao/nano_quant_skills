@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # ── SSRF 防护 ────────────────────────────────────────────────
@@ -73,10 +75,6 @@ def _ensure_safe_url(url: str) -> str:
 
     return url
 
-# ── 内容提取配置 ──────────────────────────────────────────────
-_PLAYWRIGHT_WAIT_MS = 2000        # 页面渲染后额外等待时间（毫秒）
-_MAX_CONTENT_LEN = 500_000        # 返回正文最大字符数（非字节数），超出截断
-
 # 精确标签级噪声
 _JUNK_TAGS = ["header", "footer", "nav", "aside"]
 
@@ -112,9 +110,10 @@ def _clean_html(html: str) -> str:
 
 def _truncate(text: str) -> tuple[str, bool]:
     """若超过最大长度则截断，返回 (text, truncated)。"""
-    if len(text) <= _MAX_CONTENT_LEN:
+    max_len = get_settings().fetch.max_content_length
+    if len(text) <= max_len:
         return text, False
-    return text[:_MAX_CONTENT_LEN], True
+    return text[:max_len], True
 
 
 # ── Playwright 浏览器复用 ────────────────────────────────────
@@ -167,7 +166,7 @@ async def _fetch_with_playwright(url: str) -> str:
     try:
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        await page.wait_for_timeout(_PLAYWRIGHT_WAIT_MS)
+        await page.wait_for_timeout(get_settings().fetch.playwright_wait_ms)
         html = await page.content()
     finally:
         await context.close()

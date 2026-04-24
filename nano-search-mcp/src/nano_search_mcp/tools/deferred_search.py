@@ -3,7 +3,7 @@
 功能：
 - 按 topic_id 从 deferred-tasks.md 读取查询模板并搜索
 - 支持 query_override 直接搜索
-- 3 次指数退避重试；失败时返回 source: "unavailable"
+- 指数退避重试；失败时返回 source: "unavailable"
 - max_results 裁剪到 [1, 30]
 """
 
@@ -20,23 +20,16 @@ from typing import Any
 import yaml
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
 from nano_search_mcp.tools.bailian_client import (
-    BAILIAN_WEBSEARCH_ENDPOINT,
     call_bailian_tool_sync,
     parse_json_text_payload,
 )
 
 logger = logging.getLogger(__name__)
 
-# 默认的 deferred-tasks.md 路径（相对于项目根）
-_DEFERRED_TASKS_PATH = (
-    Path(__file__).parent.parent.parent.parent.parent / "docs" / "source-intake" / "deferred-tasks.md"
-)
-
 _MAX_RESULTS_MIN = 1
 _MAX_RESULTS_MAX = 30
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
 
 
 # ── 解析器 ──────────────────────────────────────────────────
@@ -48,7 +41,7 @@ def load_deferred_topics(path: Path | None = None) -> dict[str, dict[str, Any]]:
     返回 {id: {id, milestone, reason, retry_condition, search_query_template, ...}} 字典。
     重复 id 后者覆盖前者（与既有行为保持一致）。
     """
-    tasks_path = path or _DEFERRED_TASKS_PATH
+    tasks_path = path or Path(get_settings().deferred_search.deferred_tasks_path)
     if not tasks_path.exists():
         logger.warning("deferred-tasks.md 不存在：%s", tasks_path)
         return {}
@@ -104,12 +97,15 @@ def _search_with_retry(
     max_results: int,
     region: str,
 ) -> list[dict[str, str]]:
-    """带指数退避的百炼 WebSearch，最多重试 _MAX_RETRIES 次。"""
+    """带指数退避的百炼 WebSearch，最多重试 `http.max_retries 次。"""
+    cfg = get_settings()
+    max_retries = cfg.http.max_retries
+    backoff_base = cfg.http.backoff_base
     last_err: Exception | None = None
 
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(max_retries):
         if attempt > 0:
-            backoff = _BACKOFF_BASE**attempt + random.uniform(0.5, 1.5)
+            backoff = backoff_base**attempt + random.uniform(0.5, 1.5)
             logger.warning("WebSearch 失败，第 %d 次重试，退避 %.1fs", attempt, backoff)
             time.sleep(backoff)
 
@@ -117,7 +113,7 @@ def _search_with_retry(
             # 轻量预处理：将 region 作为提示词附加到 query。
             merged_query = query if not region else f"{query} region:{region}"
             response = call_bailian_tool_sync(
-                BAILIAN_WEBSEARCH_ENDPOINT,
+                cfg.api.bailian_websearch_endpoint,
                 "bailian_web_search",
                 {"query": merged_query, "count": max_results},
             )
@@ -136,7 +132,7 @@ def _search_with_retry(
             last_err = exc
             logger.warning("WebSearch 异常（第 %d 次）：%s", attempt + 1, exc)
 
-    raise RuntimeError(f"WebSearch 连续 {_MAX_RETRIES} 次失败：{last_err}") from last_err
+    raise RuntimeError(f"WebSearch 连续 {max_retries} 次失败：{last_err}") from last_err
 
 
 # ── MCP 工具注册 ─────────────────────────────────────────────

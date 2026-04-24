@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import nano_search_mcp.tools.industry_reports as ir_mod
+from nano_search_mcp.config import CacheSettings, Settings
 from nano_search_mcp.tools.industry_reports import (
     _extract_report_text,
     _normalize_keywords,
@@ -16,6 +17,14 @@ from nano_search_mcp.tools.industry_reports import (
     fetch_report_text,
     register_industry_report_tools,
 )
+
+@pytest.fixture(autouse=True)
+def _mock_cache_settings(tmp_path):
+    """将缓存路由到 tmp_path，实现测试隔离。"""
+    settings = Settings(cache=CacheSettings(cache_dir=str(tmp_path)))
+    with patch("nano_search_mcp.tools.industry_reports.get_settings", return_value=settings):
+        yield
+
 
 _LIST_HTML = """\
 <html><body>
@@ -108,7 +117,7 @@ def test_extract_report_text() -> None:
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_fetch_industry_report_list_date_filter(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _LIST_HTML
 
     rows = fetch_industry_report_list(
@@ -124,7 +133,7 @@ def test_fetch_industry_report_list_date_filter(mock_get: MagicMock, tmp_path: P
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_fetch_industry_report_list_limit(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _LIST_HTML
 
     rows = fetch_industry_report_list(limit=1)
@@ -133,7 +142,7 @@ def test_fetch_industry_report_list_limit(mock_get: MagicMock, tmp_path: Path) -
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_fetch_industry_report_list_cache_hit(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _LIST_HTML
 
     fetch_industry_report_list(limit=2)
@@ -143,7 +152,7 @@ def test_fetch_industry_report_list_cache_hit(mock_get: MagicMock, tmp_path: Pat
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_fetch_report_text_ok(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _DETAIL_HTML
 
     text = fetch_report_text(_VALID_URL)
@@ -152,7 +161,7 @@ def test_fetch_report_text_ok(mock_get: MagicMock, tmp_path: Path) -> None:
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_fetch_report_text_cache_hit(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _DETAIL_HTML
 
     fetch_report_text(_VALID_URL)
@@ -167,7 +176,7 @@ def test_fetch_report_text_bad_url() -> None:
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_list_industry_reports_tool_success(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _LIST_HTML
 
     fn = _get_tool_fn("list_industry_reports")
@@ -185,7 +194,7 @@ def test_list_industry_reports_tool_invalid_date() -> None:
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_list_industry_reports_tool_network_error(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.side_effect = RuntimeError("network down")
 
     fn = _get_tool_fn("list_industry_reports")
@@ -196,7 +205,7 @@ def test_list_industry_reports_tool_network_error(mock_get: MagicMock, tmp_path:
 
 @patch("nano_search_mcp.tools.industry_reports._http_get_gbk")
 def test_get_report_text_tool_success(mock_get: MagicMock, tmp_path: Path) -> None:
-    ir_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
     mock_get.return_value = _DETAIL_HTML
 
     fn = _get_tool_fn("get_report_text")

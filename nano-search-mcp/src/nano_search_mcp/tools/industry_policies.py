@@ -17,18 +17,13 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
 from nano_search_mcp.tools.bailian_client import (
-    BAILIAN_WEBSEARCH_ENDPOINT,
     call_bailian_tool_sync,
     parse_json_text_payload,
 )
 
 logger = logging.getLogger(__name__)
-
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
-_TOP_N = 5
-_MAX_PER_QUERY = 10
 
 # 常见 gov.cn 子域 → (机构名, level)
 _DOMAIN_MAP: dict[str, tuple[str, str]] = {
@@ -93,7 +88,7 @@ def _build_policy_queries(
 
 def _search_gov_cn(
     queries: list[str],
-    max_per_query: int = _MAX_PER_QUERY,
+    max_per_query: int | None = None,
     region: str = "cn-zh",
 ) -> list[dict[str, Any]]:
     """对每条 query 调用百炼 WebSearch，去重后返回。
@@ -101,15 +96,18 @@ def _search_gov_cn(
     当所有 query 的所有重试均失败（且未得到任何结果）时抛出 ``RuntimeError``，
     以便上层区分「百炼服务不可用」与「无匹配结果」两种语义。
     """
+    cfg = get_settings()
+    if max_per_query is None:
+        max_per_query = cfg.industry_policies.max_per_query
     seen_urls: set[str] = set()
     results: list[dict[str, Any]] = []
     failed_queries = 0
 
     for query in queries:
         last_err: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
+        for attempt in range(cfg.http.max_retries):
             if attempt > 0:
-                backoff = _BACKOFF_BASE**attempt + random.uniform(0.5, 1.5)
+                backoff = cfg.http.backoff_base**attempt + random.uniform(0.5, 1.5)
                 logger.warning(
                     "[industry_policies] WebSearch 失败，第 %d 次重试，退避 %.1fs: %s",
                     attempt,
@@ -120,7 +118,7 @@ def _search_gov_cn(
             try:
                 merged_query = f"{query} 近一年 region:{region}"
                 response = call_bailian_tool_sync(
-                    BAILIAN_WEBSEARCH_ENDPOINT,
+                    cfg.api.bailian_websearch_endpoint,
                     "bailian_web_search",
                     {"query": merged_query, "count": max_per_query},
                 )
@@ -154,7 +152,7 @@ def _search_gov_cn(
             failed_queries += 1
             logger.error(
                 "[industry_policies] WebSearch 查询连续 %d 次失败：%s，最后错误：%s",
-                _MAX_RETRIES,
+                cfg.http.max_retries,
                 query,
                 last_err,
             )
@@ -171,15 +169,15 @@ def fetch_industry_policy_list(
     industry_sw_l2: str = "",
     keywords: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """搜索行业政策文件（gov.cn），返回最新 5 条。
+    """搜索行业政策文件（gov.cn），返回最新 `industry_policies.top_n` 条。
 
-    使用百炼 WebSearch 检索政策相关页面并去重，返回前 5 条。
+    使用百炼 WebSearch 检索政策相关页面并去重，返回前 `industry_policies.top_n` 条。
     """
     queries = _build_policy_queries(industry_sw_l2, keywords)
     results = _search_gov_cn(queries)
 
-    # 取前 _TOP_N 条
-    return results[:_TOP_N]
+    top_n = get_settings().industry_policies.top_n
+    return results[:top_n]
 
 
 def register_industry_policy_tools(mcp: FastMCP) -> None:

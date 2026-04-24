@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING
 from bs4 import BeautifulSoup
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
+
 if TYPE_CHECKING:
     pass
 
@@ -66,10 +68,6 @@ _UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 _REFERER = "https://finance.sina.com.cn/"
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
-_REQUEST_INTERVAL = 1.0  # 相邻请求最小间隔（秒）
-_MAX_PAGES = 20          # 最多翻页数（近 600 条，IR 密度约 5/30，可获约 100 条）
 
 # ── 输入校验正则 ──────────────────────────────────────────
 _STOCKID_RE = re.compile(r"^\d{6}$")
@@ -121,11 +119,6 @@ _ORG_BLOCKLIST = (
     "其他", "详见", "附件", "见下", "名单", "等机构", "以上", "不限于",
     "投资者", "等人员", "共计",
 )
-
-# ── 缓存配置 ──────────────────────────────────────────────
-_CACHE_DIR = Path.home() / ".cache" / "nano_search_mcp" / "ir_meetings"
-_LIST_CACHE_TTL_SECS = 3600          # 列表缓存 1 小时
-_DETAIL_CACHE_TTL_SECS = 7 * 86400  # 详情缓存 7 天
 
 _last_request_time: float = 0.0
 
@@ -193,8 +186,9 @@ def _validate_meeting_types(meeting_types: list[str]) -> list[str]:
 def _throttle() -> None:
     global _last_request_time
     elapsed = time.monotonic() - _last_request_time
-    if elapsed < _REQUEST_INTERVAL:
-        time.sleep(_REQUEST_INTERVAL - elapsed)
+    interval = get_settings().http.request_interval
+    if elapsed < interval:
+        time.sleep(interval - elapsed)
     _last_request_time = time.monotonic()
 
 
@@ -204,10 +198,11 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
     if not any(url.startswith(p) for p in allowed_prefixes):
         raise ValueError(f"禁止访问非新浪财经域名: {url!r}")
 
+    cfg = get_settings()
     last_error: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(cfg.http.max_retries):
         if attempt > 0:
-            backoff = _BACKOFF_BASE ** attempt + random.uniform(0.2, 0.8)
+            backoff = cfg.http.backoff_base ** attempt + random.uniform(0.2, 0.8)
             logger.warning(
                 "[ir_meetings] 抓取失败，第 %d 次重试，退避 %.1fs: %s",
                 attempt, backoff, url,
@@ -226,7 +221,7 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
             last_error = exc
 
     raise RuntimeError(
-        f"抓取新浪公告页失败，已重试 {_MAX_RETRIES} 次: {url}。最后错误: {last_error}"
+        f"抓取新浪公告页失败，已重试 {cfg.http.max_retries} 次: {url}。最后错误: {last_error}"
     ) from last_error
 
 
@@ -235,11 +230,11 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
 # ─────────────────────────────────────────────────────────
 
 def _cache_path_list(stockid: str, page: int) -> Path:
-    return _CACHE_DIR / f"{stockid}_p{page}.json"
+    return get_settings().ir_meetings_cache_dir / f"{stockid}_p{page}.json"
 
 
 def _cache_path_detail(bulletin_id: str) -> Path:
-    return _CACHE_DIR / "detail" / f"{bulletin_id}.txt"
+    return get_settings().ir_meetings_cache_dir / "detail" / f"{bulletin_id}.txt"
 
 
 def _is_fresh(path: Path, ttl_secs: int) -> bool:
@@ -398,9 +393,9 @@ def fetch_ir_meeting_list(
 ) -> list[dict]:
     """抓取指定股票的 IR 会议/调研纪要列表，支持日期区间过滤。
 
-    - 自动翻页，最多 _MAX_PAGES 页（~600 条临时公告，含约 100 条 IR）
+    - 自动翻页（支持配置 `ir_meetings.max_pages`）
     - 遇到最旧条目早于 start_date 提前停止
-    - 列表页缓存 1 小时
+    - 列表页缓存（支持配置 `cache.list_cache_ttl`）
     """
     _validate_stockid(stockid)
     if start_date:
@@ -408,17 +403,18 @@ def fetch_ir_meeting_list(
     if end_date:
         _validate_date(end_date, "end_date")
 
+    cfg = get_settings()
     all_entries: list[dict] = []
     seen_urls: set[str] = set()
 
-    for page in range(1, _MAX_PAGES + 1):
+    for page in range(1, cfg.ir_meetings.max_pages + 1):
         if page == 1:
             url = _LIST_URL_P1.format(stockid=stockid)
         else:
             url = _LIST_URL_PN.format(stockid=stockid, page=page)
 
         cache_p = _cache_path_list(stockid, page)
-        if _is_fresh(cache_p, _LIST_CACHE_TTL_SECS):
+        if _is_fresh(cache_p, cfg.cache.list_cache_ttl):
             logger.debug("[ir_meetings] 命中列表页缓存: %s p%d", stockid, page)
             cached = json.loads(_read_cache(cache_p))
             entries: list[dict] = cached.get("entries", [])
@@ -471,7 +467,7 @@ def fetch_ir_meeting_text(source_url: str) -> str:
     bulletin_id = params.get("id", [""])[0]
     cache_p = _cache_path_detail(bulletin_id)
 
-    if _is_fresh(cache_p, _DETAIL_CACHE_TTL_SECS):
+    if _is_fresh(cache_p, get_settings().cache.detail_cache_ttl):
         logger.debug("[ir_meetings] 命中详情缓存: id=%s", bulletin_id)
         return _read_cache(cache_p)
 

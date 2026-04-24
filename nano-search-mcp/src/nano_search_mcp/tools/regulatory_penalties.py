@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
 
+from nano_search_mcp.config import get_settings
+
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
@@ -44,17 +46,10 @@ _UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 _REFERER = "https://finance.sina.com.cn/"
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
-_REQUEST_INTERVAL = 1.0
 
 # ── 输入校验 ─────────────────────────────────────────────
 _STOCKID_RE = re.compile(r"^\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-# ── 缓存配置 ──────────────────────────────────────────────
-_CACHE_DIR = Path.home() / ".cache" / "nano_search_mcp" / "penalties"
-_LIST_CACHE_TTL_SECS = 3600  # 1 小时
 
 _last_request_time: float = 0.0
 
@@ -87,16 +82,17 @@ def _validate_date(d: str, field: str) -> str:
 # ─────────────────────────────────────────────────────────
 
 def _throttle() -> None:
-    """确保相邻请求之间至少间隔 _REQUEST_INTERVAL 秒。"""
+    """确保相邻请求之间至少间隔 `http.request_interval` 秒。"""
     global _last_request_time
     elapsed = time.monotonic() - _last_request_time
-    if elapsed < _REQUEST_INTERVAL:
-        time.sleep(_REQUEST_INTERVAL - elapsed)
+    interval = get_settings().http.request_interval
+    if elapsed < interval:
+        time.sleep(interval - elapsed)
     _last_request_time = time.monotonic()
 
 
 def _http_get_gbk(url: str, timeout: int = 15) -> str:
-    """抓取 GBK 编码页面，内置指数退避重试（最多 _MAX_RETRIES 次）。
+    """抓取 GBK 编码页面，内置指数退避重试（支持配置 `http.max_retries`）。
 
     仅允许 vip.stock.finance.sina.com.cn 域名，防止 SSRF。
     """
@@ -106,10 +102,11 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
     if not url.startswith(_ALLOWED_BASE):
         raise ValueError(f"禁止访问非新浪财经违规处理页域名: {url!r}")
 
+    cfg = get_settings()
     last_error: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(cfg.http.max_retries):
         if attempt > 0:
-            backoff = _BACKOFF_BASE ** attempt + random.uniform(0.2, 0.8)
+            backoff = cfg.http.backoff_base ** attempt + random.uniform(0.2, 0.8)
             logger.warning(
                 "[penalties] 抓取失败，第 %d 次重试，退避 %.1fs: %s",
                 attempt, backoff, url,
@@ -128,7 +125,7 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
             last_error = exc
 
     raise RuntimeError(
-        f"抓取新浪处罚页失败，已重试 {_MAX_RETRIES} 次: {url}。最后错误: {last_error}"
+        f"抓取新浪处罚页失败，已重试 {cfg.http.max_retries} 次: {url}。最后错误: {last_error}"
     ) from last_error
 
 
@@ -137,7 +134,7 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
 # ─────────────────────────────────────────────────────────
 
 def _cache_path(stockid: str) -> Path:
-    return _CACHE_DIR / f"{stockid}.json"
+    return get_settings().penalties_cache_dir / f"{stockid}.json"
 
 
 def _is_fresh(path: Path, ttl_secs: int) -> bool:
@@ -333,7 +330,7 @@ def fetch_penalty_list(
 
     # 2. 缓存命中检查
     cache_file = _cache_path(stockid)
-    if _is_fresh(cache_file, _LIST_CACHE_TTL_SECS):
+    if _is_fresh(cache_file, get_settings().cache.list_cache_ttl):
         cached = _load_cache(cache_file)
         if cached is not None:
             logger.debug("[penalties] 缓存命中: %s", stockid)
@@ -390,7 +387,7 @@ def _apply_date_filter(
 # MCP 工具注册
 # ─────────────────────────────────────────────────────────
 
-def register_regulatory_penalty_tools(mcp: "FastMCP") -> None:
+def register_regulatory_penalty_tools(mcp: FastMCP) -> None:
     """向 FastMCP 实例注册监管处罚相关工具。"""
 
     @mcp.tool()
