@@ -16,6 +16,8 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 _BASE = "https://stock.finance.sina.com.cn"
@@ -33,16 +35,7 @@ _UA = (
 )
 _REFERER = "https://finance.sina.com.cn/"
 
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
-_REQUEST_INTERVAL = 1.0
-_MAX_PAGES = 5
-
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
-
-_CACHE_DIR = Path.home() / ".cache" / "nano_search_mcp" / "industry_reports"
-_LIST_CACHE_TTL_SECS = 3600
-_DETAIL_CACHE_TTL_SECS = 7 * 86400
 
 _last_request_time: float = 0.0
 
@@ -121,8 +114,9 @@ def _validate_report_url(source_url: str) -> str:
 def _throttle() -> None:
     global _last_request_time
     elapsed = time.monotonic() - _last_request_time
-    if elapsed < _REQUEST_INTERVAL:
-        time.sleep(_REQUEST_INTERVAL - elapsed)
+    interval = get_settings().http.request_interval
+    if elapsed < interval:
+        time.sleep(interval - elapsed)
     _last_request_time = time.monotonic()
 
 
@@ -130,10 +124,11 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
     if not url.startswith(_BASE):
         raise ValueError(f"禁止访问非新浪域名: {url!r}")
 
+    cfg = get_settings()
     last_error: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(cfg.http.max_retries):
         if attempt > 0:
-            backoff = _BACKOFF_BASE ** attempt + random.uniform(0.2, 0.8)
+            backoff = cfg.http.backoff_base ** attempt + random.uniform(0.2, 0.8)
             logger.warning(
                 "[industry_reports] 抓取失败，第 %d 次重试，退避 %.1fs: %s",
                 attempt,
@@ -154,18 +149,18 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
             last_error = exc
 
     raise RuntimeError(
-        f"抓取新浪行业研报页失败，已重试 {_MAX_RETRIES} 次: {url}。最后错误: {last_error}"
+        f"抓取新浪行业研报页失败，已重试 {cfg.http.max_retries} 次: {url}。最后错误: {last_error}"
     ) from last_error
 
 
 def _cache_path_list(query_key: str) -> Path:
     digest = hashlib.sha1(query_key.encode("utf-8")).hexdigest()
-    return _CACHE_DIR / "list" / f"{digest}.json"
+    return get_settings().industry_reports_cache_dir / "list" / f"{digest}.json"
 
 
 def _cache_path_detail(source_url: str) -> Path:
     digest = hashlib.sha1(source_url.encode("utf-8")).hexdigest()
-    return _CACHE_DIR / "detail" / f"{digest}.txt"
+    return get_settings().industry_reports_cache_dir / "detail" / f"{digest}.txt"
 
 
 def _is_fresh(path: Path, ttl_secs: int) -> bool:
@@ -305,12 +300,13 @@ def fetch_industry_report_list(
         sort_keys=True,
     )
     cache_p = _cache_path_list(query_key)
-    if _is_fresh(cache_p, _LIST_CACHE_TTL_SECS):
+    cfg = get_settings()
+    if _is_fresh(cache_p, cfg.cache.list_cache_ttl):
         return json.loads(_read_cache(cache_p))
 
     all_entries: list[dict] = []
     seen_urls: set[str] = set()
-    for page in range(1, _MAX_PAGES + 1):
+    for page in range(1, cfg.industry_reports.max_pages + 1):
         if resolved_sw2:
             # 使用个股所属申万行业搜索 URL
             base_search = f"{_BASE}{_SEARCH_PATH}?industry={resolved_sw2}&t1={resolved_t1}"
@@ -372,7 +368,7 @@ def fetch_industry_report_list(
 def fetch_report_text(source_url: str) -> str:
     source_url = _validate_report_url(source_url)
     cache_p = _cache_path_detail(source_url)
-    if _is_fresh(cache_p, _DETAIL_CACHE_TTL_SECS):
+    if _is_fresh(cache_p, get_settings().cache.detail_cache_ttl):
         return _read_cache(cache_p)
 
     html = _http_get_gbk(source_url)

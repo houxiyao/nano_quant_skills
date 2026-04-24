@@ -3,22 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from typing import Any
 
 import httpx
 
-BAILIAN_WEBSEARCH_ENDPOINT = os.getenv(
-    "BAILIAN_WEBSEARCH_ENDPOINT",
-    "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp",
-)
+from nano_search_mcp.config import get_settings
 
 # 错误消息中原始响应片段的截断长度
 _ERR_SNIPPET = 1000
-
-# 默认 HTTP 超时（秒），可通过环境变量 BAILIAN_MCP_TIMEOUT 覆盖
-_DEFAULT_TIMEOUT = float(os.getenv("BAILIAN_MCP_TIMEOUT", "30.0"))
 
 
 class BailianMCPError(RuntimeError):
@@ -26,9 +19,9 @@ class BailianMCPError(RuntimeError):
 
 
 def _auth_headers() -> dict[str, str]:
-    api_key = os.getenv("DASHSCOPE_API_KEY")
+    api_key = get_settings().api.dashscope_api_key
     if not api_key:
-        raise BailianMCPError("缺少环境变量 DASHSCOPE_API_KEY")
+        raise BailianMCPError("缺少 DASHSCOPE_API_KEY（可通过环境变量或配置文件设置）")
     return {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -76,7 +69,7 @@ def call_bailian_tool_sync(
             "arguments": arguments,
         },
     }
-    effective_timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
+    effective_timeout = timeout if timeout is not None else get_settings().api.bailian_mcp_timeout
     with httpx.Client(timeout=effective_timeout) as client:
         resp = client.post(endpoint, json=payload, headers=_auth_headers())
     if resp.status_code >= 400:

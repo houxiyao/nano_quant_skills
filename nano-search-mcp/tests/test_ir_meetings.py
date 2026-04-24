@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nano_search_mcp.config import CacheSettings, Settings
 from nano_search_mcp.tools.ir_meetings import (
     _classify_meeting_type,
     _extract_participants,
@@ -21,6 +22,14 @@ from nano_search_mcp.tools.ir_meetings import (
     fetch_ir_meeting_text,
     register_ir_meeting_tools,
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_cache_settings(tmp_path):
+    """将缓存路由到 tmp_path，实现测试隔离。"""
+    settings = Settings(cache=CacheSettings(cache_dir=str(tmp_path)))
+    with patch("nano_search_mcp.tools.ir_meetings.get_settings", return_value=settings):
+        yield
 
 
 # ─────────────────────────────────────────────────────────
@@ -225,10 +234,7 @@ def test_fetch_ir_meeting_list_cache_hit(tmp_path):
         json.dumps({"entries": cache_entries, "oldest_date": "2026-04-16", "has_next": False}),
         encoding="utf-8",
     )
-    with (
-        patch("nano_search_mcp.tools.ir_meetings._CACHE_DIR", tmp_path / "ir_meetings"),
-        patch("nano_search_mcp.tools.ir_meetings._http_get_gbk") as mock_http,
-    ):
+    with patch("nano_search_mcp.tools.ir_meetings._http_get_gbk") as mock_http:
         results = fetch_ir_meeting_list(stockid, "2026-01-01", "2026-12-31")
     mock_http.assert_not_called()
     assert len(results) == 1
@@ -241,11 +247,8 @@ def test_fetch_ir_meeting_list_cache_hit(tmp_path):
 
 def test_fetch_ir_meeting_list_network_error(tmp_path):
     """HTTP 失败时抛出 RuntimeError。"""
-    with (
-        patch("nano_search_mcp.tools.ir_meetings._CACHE_DIR", tmp_path / "ir_meetings"),
-        patch("nano_search_mcp.tools.ir_meetings._http_get_gbk",
-              side_effect=RuntimeError("连接超时")),
-    ):
+    with patch("nano_search_mcp.tools.ir_meetings._http_get_gbk",
+              side_effect=RuntimeError("连接超时")):
         with pytest.raises(RuntimeError, match="连接超时"):
             fetch_ir_meeting_list("000582")
 

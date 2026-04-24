@@ -103,6 +103,105 @@ python -m nano_search_mcp --transport stdio
 
 如果你的 MCP Client、网关或反向代理有请求超时限制，需要把超时时间设到足够覆盖最慢的一次 `fetch_page` 或 `get_company_report` 调用。
 
+## 配置
+
+服务支持四层配置源，优先级从高到低：
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 1 | CLI 参数 | `--transport`, `--host`, `--port`, `--config` |
+| 2 | YAML 配置文件 | 通过 `--config` 指定或按默认路径自动发现 |
+| 3 | 环境变量 | `NANO_SEARCH_MCP_{SECTION}_{FIELD}`（大写下划线） |
+| 4 | 内置默认值 | 代码中的 dataclass 默认值，零配置即可启动 |
+
+### 配置文件
+
+生成示例配置文件：
+
+```bash
+nano-search-mcp --generate-config > config.yaml
+```
+
+配置文件自动查找顺序（未指定 `--config` 时）：
+
+1. `./config.yaml`
+2. `./nano-search-mcp.yaml`
+3. `~/.config/nano-search-mcp/config.yaml`
+
+完整配置结构见 [`config.example.yaml`](config.example.yaml)。主要配置段：
+
+```yaml
+api:
+  dashscope_api_key: "sk-xxx"       # 百炼 API 密钥（推荐用环境变量）
+  bailian_websearch_endpoint: "..."  # 百炼 WebSearch MCP 端点
+  bailian_mcp_timeout: 30.0          # HTTP 请求超时（秒）
+
+server:
+  transport: "streamable-http"       # streamable-http 或 stdio
+  host: "0.0.0.0"
+  port: 8000
+
+http:
+  max_retries: 3                     # 网络请求最大重试次数
+  backoff_base: 2.0                  # 指数退避基数（秒）
+  request_interval: 1.0              # 相邻请求最小间隔（秒）
+
+cache:
+  cache_dir: "~/.cache/nano_search_mcp"  # 缓存根目录（支持 ~）
+  list_cache_ttl: 3600                   # 列表页缓存 TTL（秒）
+  detail_cache_ttl: 604800               # 详情页缓存 TTL（秒）
+
+fetch:
+  playwright_wait_ms: 2000           # 渲染后额外等待（毫秒）
+  max_content_length: 500000         # 正文最大字符数
+
+announcements:
+  max_pages: 10                      # 公告列表最多翻页数
+
+industry_reports:
+  max_pages: 5
+
+ir_meetings:
+  max_pages: 20
+
+industry_policies:
+  max_per_query: 10
+  top_n: 5
+```
+
+### 环境变量
+
+两种命名格式均受支持：
+
+**新格式**（推荐）：`NANO_SEARCH_MCP_{SECTION}_{FIELD}`
+
+```bash
+export NANO_SEARCH_MCP_API_DASHSCOPE_API_KEY="sk-xxx"
+export NANO_SEARCH_MCP_HTTP_MAX_RETRIES=5
+export NANO_SEARCH_MCP_CACHE_CACHE_DIR="/tmp/mcp_cache"
+```
+
+**旧格式**（向后兼容）：
+
+```bash
+export DASHSCOPE_API_KEY="sk-xxx"
+export BAILIAN_WEBSEARCH_ENDPOINT="https://..."
+export BAILIAN_MCP_TIMEOUT=60
+```
+
+### CLI 参数
+
+```bash
+nano-search-mcp --help
+
+# 指定配置文件
+nano-search-mcp --config /path/to/config.yaml
+
+# 覆盖服务参数
+nano-search-mcp --transport stdio
+nano-search-mcp --host 127.0.0.1 --port 9000
+```
+
 ### 作为 Python 包导入
 
 项目本身是标准 Python 包，可以直接安装并导入：
@@ -178,9 +277,11 @@ pytest
 ## 目录结构
 
 ```text
+config.example.yaml          示例配置文件（可复制为 config.yaml 直接使用）
 src/nano_search_mcp/
+  config.py       集中式配置管理（四层优先级合并）
   api.py          标准 MCP HTTP app 兼容入口
-  server.py       MCP Server 入口（注册 12 个工具）
+  server.py       MCP Server 入口（注册 12 个工具 + CLI 解析）
   tools/
     search.py                百炼 WebSearch 搜索
     fetch.py                 页面抓取（含 SSRF 防护）

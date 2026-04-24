@@ -5,8 +5,8 @@ from typing import Any, TypedDict
 
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
 from nano_search_mcp.tools.bailian_client import (
-    BAILIAN_WEBSEARCH_ENDPOINT,
     BailianMCPError,
     call_bailian_tool_sync,
     parse_json_text_payload,
@@ -47,7 +47,7 @@ def _search_via_bailian(
     normalized = _normalize_search_query(query=query, region=region, timelimit=timelimit)
     try:
         response = call_bailian_tool_sync(
-            BAILIAN_WEBSEARCH_ENDPOINT,
+            get_settings().api.bailian_websearch_endpoint,
             "bailian_web_search",
             {"query": normalized, "count": max_results},
         )

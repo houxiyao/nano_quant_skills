@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nano_search_mcp.config import DeferredSearchSettings, Settings
 from nano_search_mcp.tools.deferred_search import (
     _search_with_retry,
     load_deferred_topics,
@@ -97,20 +98,22 @@ def test_render_template_leaves_missing_vars() -> None:
 # ── search_deferred_topic via register ────────────────────
 
 
+def _settings_with_tasks_path(tasks_file: Path) -> Settings:
+    """创建 deferred_tasks_path 指向 tasks_file 的 Settings。"""
+    return Settings(deferred_search=DeferredSearchSettings(deferred_tasks_path=str(tasks_file)))
+
+
 def _make_mcp_and_get_tool(tasks_file: Path) -> Any:
     """注册工具后从 FastMCP 提取可调用函数（测试用）。"""
     from mcp.server.fastmcp import FastMCP
 
-    import nano_search_mcp.tools.deferred_search as ds_module
-
-    original_path = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    mcp = FastMCP("test")
-    register_deferred_search_tools(mcp)
-    ds_module._DEFERRED_TASKS_PATH = original_path
+    settings = _settings_with_tasks_path(tasks_file)
+    with patch("nano_search_mcp.tools.deferred_search.get_settings", return_value=settings):
+        mcp = FastMCP("test")
+        register_deferred_search_tools(mcp)
     # 获取注册的工具函数
     tools = {t.name: t for t in mcp._tool_manager.list_tools()}  # type: ignore[attr-defined]
-    return tools.get("search_deferred_topic"), ds_module
+    return tools.get("search_deferred_topic")
 
 
 # ── 直接测试内部函数 ──────────────────────────────────────
@@ -146,14 +149,12 @@ def test_search_retries_then_raises(mock_call: MagicMock) -> None:
 
 @patch("nano_search_mcp.tools.deferred_search._search_with_retry")
 def test_search_by_topic_id_success(mock_search: MagicMock, tasks_file: Path) -> None:
-    import nano_search_mcp.tools.deferred_search as ds_module
     from mcp.server.fastmcp import FastMCP
 
     mock_search.return_value = [{"title": "gov 政策", "url": "https://gov.cn/a", "snippet": "内容"}]
 
-    original = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    try:
+    settings = _settings_with_tasks_path(tasks_file)
+    with patch("nano_search_mcp.tools.deferred_search.get_settings", return_value=settings):
         mcp = FastMCP("test-success")
         register_deferred_search_tools(mcp)
         tool_fn = None
@@ -171,43 +172,31 @@ def test_search_by_topic_id_success(mock_search: MagicMock, tasks_file: Path) ->
         assert len(result["results"]) == 1
         assert result["results"][0]["title"] == "gov 政策"
         assert "query" in result
-    finally:
-        ds_module._DEFERRED_TASKS_PATH = original
 
 
 @patch("nano_search_mcp.tools.deferred_search.call_bailian_tool_sync")
 @patch("nano_search_mcp.tools.deferred_search.parse_json_text_payload")
 def test_search_with_query_override(mock_parse: MagicMock, mock_call: MagicMock, tasks_file: Path) -> None:
-    import nano_search_mcp.tools.deferred_search as ds_module
-
     mock_call.return_value = {"result": {"content": [{"type": "text", "text": "{}"}]}}
     mock_parse.return_value = {"pages": []}
 
-    original = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    try:
-        # 模拟 search_deferred_topic 内部逻辑
-        query = "直接搜索词"
-        results = ds_module._search_with_retry(query, max_results=10, region="cn-zh")
-        assert results == []
-        called_args = mock_call.call_args
-        assert called_args is not None
-        sent_query = called_args.args[2]["query"]
-        assert "直接搜索词" in sent_query
-    finally:
-        ds_module._DEFERRED_TASKS_PATH = original
+    # 模拟 search_deferred_topic 内部逻辑
+    query = "直接搜索词"
+    results = _search_with_retry(query, max_results=10, region="cn-zh")
+    assert results == []
+    called_args = mock_call.call_args
+    assert called_args is not None
+    sent_query = called_args.args[2]["query"]
+    assert "直接搜索词" in sent_query
 
 
 def test_unknown_topic_id_returns_unavailable(tasks_file: Path) -> None:
-    import nano_search_mcp.tools.deferred_search as ds_module
     from mcp.server.fastmcp import FastMCP
 
-    original = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    try:
+    settings = _settings_with_tasks_path(tasks_file)
+    with patch("nano_search_mcp.tools.deferred_search.get_settings", return_value=settings):
         mcp = FastMCP("test-unknown")
         register_deferred_search_tools(mcp)
-        # 找到注册的工具并直接调用其 fn
         tool_fn = None
         for t in mcp._tool_manager.list_tools():  # type: ignore[attr-defined]
             if t.name == "search_deferred_topic":
@@ -217,20 +206,16 @@ def test_unknown_topic_id_returns_unavailable(tasks_file: Path) -> None:
         result = tool_fn(topic_id="nonexistent-id")
         assert result["source"] == "unavailable"
         assert "unknown topic_id" in result["error"]
-    finally:
-        ds_module._DEFERRED_TASKS_PATH = original
 
 
 @patch("nano_search_mcp.tools.deferred_search.call_bailian_tool_sync")
 def test_search_failure_returns_unavailable(mock_call: MagicMock, tasks_file: Path) -> None:
-    import nano_search_mcp.tools.deferred_search as ds_module
     from mcp.server.fastmcp import FastMCP
 
     mock_call.side_effect = ConnectionError("断网")
 
-    original = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    try:
+    settings = _settings_with_tasks_path(tasks_file)
+    with patch("nano_search_mcp.tools.deferred_search.get_settings", return_value=settings):
         mcp = FastMCP("test-failure")
         register_deferred_search_tools(mcp)
         tool_fn = None
@@ -246,17 +231,13 @@ def test_search_failure_returns_unavailable(mock_call: MagicMock, tasks_file: Pa
             )
         assert result["source"] == "unavailable"
         assert "error" in result
-    finally:
-        ds_module._DEFERRED_TASKS_PATH = original
 
 
 def test_max_results_clamping(tasks_file: Path) -> None:
-    import nano_search_mcp.tools.deferred_search as ds_module
     from mcp.server.fastmcp import FastMCP
 
-    original = ds_module._DEFERRED_TASKS_PATH
-    ds_module._DEFERRED_TASKS_PATH = tasks_file
-    try:
+    settings = _settings_with_tasks_path(tasks_file)
+    with patch("nano_search_mcp.tools.deferred_search.get_settings", return_value=settings):
         mcp = FastMCP("test-clamp")
         register_deferred_search_tools(mcp)
         tool_fn = None
@@ -277,5 +258,3 @@ def test_max_results_clamping(tasks_file: Path) -> None:
             tool_fn(topic_id="", query_override="test", max_results=999)
             actual = mock_search.call_args[1]["max_results"]
             assert actual == 30
-    finally:
-        ds_module._DEFERRED_TASKS_PATH = original

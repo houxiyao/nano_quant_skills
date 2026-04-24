@@ -25,6 +25,8 @@ from typing import Literal
 from bs4 import BeautifulSoup
 from mcp.server.fastmcp import FastMCP
 
+from nano_search_mcp.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # 优先 https，若握手失败再回退 http
@@ -33,10 +35,6 @@ _BASE_HTTP = "http://vip.stock.finance.sina.com.cn"
 _DETAIL_PATH_TPL = "/corp/view/vCB_AllBulletinDetail.php?stockid={stockid}&id={id}"
 _LIST_PATH_TPL = "/corp/go.php/{view}/stockid/{stockid}/page_type/{page_type}.phtml"
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-
-# 重试 / 退避
-_MAX_RETRIES = 3
-_BACKOFF_BASE = 2.0
 
 # 校验 stockid 为 6 位数字，防止 URL 注入 / SSRF
 _STOCKID_PATTERN = re.compile(r"^\d{6}$")
@@ -118,16 +116,17 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
     """抓取 GBK 编码页面，返回解码后的 HTML 字符串。
 
     - 优先使用传入 URL（https）；若 https 握手/连接失败则回退 http。
-    - 网络/HTTP 错误使用指数退避重试，最多 _MAX_RETRIES 次。
+    - 网络/HTTP 错误使用指数退避重试（支持配置 `http.max_retries`）。
     - 仅允许 sina 目标域，避免 SSRF。
     """
     if not (url.startswith(_BASE_HTTPS) or url.startswith(_BASE_HTTP)):
         raise ValueError(f"禁止访问非新浪财经域名: {url}")
 
+    cfg = get_settings()
     last_error: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(cfg.http.max_retries):
         if attempt > 0:
-            backoff = _BACKOFF_BASE ** attempt + random.uniform(0.2, 0.8)
+            backoff = cfg.http.backoff_base ** attempt + random.uniform(0.2, 0.8)
             logger.warning(
                 "[sina_reports] 抓取失败，第 %d 次重试，退避 %.1fs: %s",
                 attempt, backoff, url,
@@ -149,7 +148,7 @@ def _http_get_gbk(url: str, timeout: int = 15) -> str:
             last_error = exc
 
     raise RuntimeError(
-        f"抓取新浪财经页面失败，已重试 {_MAX_RETRIES} 次: {url}。最后错误: {last_error}"
+        f"抓取新浪财经页面失败，已重试 {cfg.http.max_retries} 次: {url}。最后错误: {last_error}"
     ) from last_error
 
 

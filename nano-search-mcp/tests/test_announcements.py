@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import nano_search_mcp.tools.announcements as ann_mod
+from nano_search_mcp.config import CacheSettings, Settings
 from nano_search_mcp.tools.announcements import (
     _classify_ann_type,
     _extract_detail_text,
@@ -24,6 +25,15 @@ from nano_search_mcp.tools.announcements import (
 )
 
 # ── 测试 HTML 固件 ────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _mock_cache_settings(tmp_path):
+    """将缓存路由到 tmp_path，实现测试隔离。"""
+    settings = Settings(cache=CacheSettings(cache_dir=str(tmp_path)))
+    with patch("nano_search_mcp.tools.announcements.get_settings", return_value=settings):
+        yield
+
 
 _LIST_HTML = """\
 <html><body>
@@ -172,7 +182,7 @@ def test_extract_detail_text_content_div() -> None:
 def test_fetch_list_date_filter(mock_get: MagicMock, tmp_path: Path) -> None:
     """只返回 start_date ~ end_date 范围内的公告。"""
     mock_get.return_value = _LIST_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     entries = fetch_announcement_list("688270", "2026-01-01", "2026-12-31")
     dates = [e["ann_date"] for e in entries]
@@ -184,7 +194,7 @@ def test_fetch_list_date_filter(mock_get: MagicMock, tmp_path: Path) -> None:
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_fetch_list_no_filter_returns_all(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _LIST_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     entries = fetch_announcement_list("688270", "2025-01-01", "2026-12-31")
     assert len(entries) == 4
@@ -194,7 +204,7 @@ def test_fetch_list_no_filter_returns_all(mock_get: MagicMock, tmp_path: Path) -
 def test_fetch_list_pagination(mock_get: MagicMock, tmp_path: Path) -> None:
     """列表页有"下一页"时自动翻页。"""
     mock_get.side_effect = [_LIST_HTML_WITH_NEXT, _LIST_HTML_P2]
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     entries = fetch_announcement_list("688270", "2025-01-01", "2026-12-31")
     assert len(entries) == 2
@@ -205,7 +215,7 @@ def test_fetch_list_pagination(mock_get: MagicMock, tmp_path: Path) -> None:
 def test_fetch_list_cache_hit(mock_get: MagicMock, tmp_path: Path) -> None:
     """第二次调用命中缓存，不发起 HTTP 请求。"""
     mock_get.return_value = _LIST_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fetch_announcement_list("688270", "2025-01-01", "2026-12-31")
     fetch_announcement_list("688270", "2025-01-01", "2026-12-31")
@@ -223,7 +233,7 @@ _VALID_URL = (
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_fetch_detail_returns_text(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _DETAIL_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     text = fetch_announcement_text(_VALID_URL)
     assert "立案告知书" in text
@@ -232,7 +242,7 @@ def test_fetch_detail_returns_text(mock_get: MagicMock, tmp_path: Path) -> None:
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_fetch_detail_cache_hit(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _DETAIL_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fetch_announcement_text(_VALID_URL)
     fetch_announcement_text(_VALID_URL)
@@ -249,7 +259,7 @@ def test_fetch_detail_bad_url() -> None:
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_list_announcements_tool_success(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _LIST_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fn = _make_tool_fn("list_announcements")
     result = fn(ts_code="688270.SH", start_date="2025-01-01", end_date="2026-12-31")
@@ -262,7 +272,7 @@ def test_list_announcements_tool_success(mock_get: MagicMock, tmp_path: Path) ->
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_list_announcements_ann_types_filter(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _LIST_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fn = _make_tool_fn("list_announcements")
     result = fn(
@@ -292,7 +302,7 @@ def test_list_announcements_unknown_ann_type() -> None:
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_list_announcements_network_error(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.side_effect = RuntimeError("Connection refused")
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fn = _make_tool_fn("list_announcements")
     result = fn(ts_code="688270.SH", start_date="2026-01-01", end_date="2026-12-31")
@@ -303,7 +313,7 @@ def test_list_announcements_network_error(mock_get: MagicMock, tmp_path: Path) -
 @patch("nano_search_mcp.tools.announcements._http_get_gbk")
 def test_get_announcement_text_tool_success(mock_get: MagicMock, tmp_path: Path) -> None:
     mock_get.return_value = _DETAIL_HTML
-    ann_mod._CACHE_DIR = tmp_path  # type: ignore[assignment]
+
 
     fn = _make_tool_fn("get_announcement_text")
     result = fn(source_url=_VALID_URL)
