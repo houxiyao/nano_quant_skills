@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -33,6 +35,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+import duckdb
 
 
 _STDERR_LOCK = threading.Lock()
@@ -48,12 +52,21 @@ def _log(msg: str) -> None:
 # Constants
 # ---------------------------------------------------------------------------
 
-SKILLS_ROOT = Path(__file__).resolve().parents[2]  # .github/skills/
-PROJECT_ROOT = SKILLS_ROOT.parents[1]               # repo root
+def _find_analysis_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if parent.name != "2min-company-analysis":
+            continue
+        marker = parent / "seven-look-eight-question" / "assets" / "rule_registry.json"
+        if marker.exists():
+            return parent
+    raise RuntimeError(f"Cannot locate 2min-company-analysis root from: {current}")
+
+
+SKILLS_ROOT = _find_analysis_root()
+PROJECT_ROOT = SKILLS_ROOT.parent
 EIGHT_QUESTIONS_SCRIPT = (
-    PROJECT_ROOT
-    / ".github"
-    / "skills"
+    SKILLS_ROOT
     / "seven-look-eight-question"
     / "scripts"
     / "eight_questions_orchestrator.py"
@@ -119,12 +132,530 @@ LOOK_SPECS: list[dict[str, Any]] = [
 ]
 
 
+_SEVEN_LOOK_TABLE_EXISTENCE_REQUIRED = [
+    "fin_income",
+    "fin_balance",
+    "fin_cashflow",
+    "fin_indicator",
+    "idx_sw_l3_peers",
+    "stk_factor_pro",
+    "stk_info",
+]
+
+_SEVEN_LOOK_DATA_REQUIRED = [
+    {"table": "fin_income", "code_col": "ts_code", "annual": True, "min_rows": 1},
+    {"table": "fin_balance", "code_col": "ts_code", "annual": True, "min_rows": 1},
+    {"table": "fin_cashflow", "code_col": "ts_code", "annual": True, "min_rows": 1},
+    {"table": "fin_indicator", "code_col": "ts_code", "annual": True, "min_rows": 1},
+    {"table": "idx_sw_l3_peers", "code_col": "anchor_ts_code", "annual": False, "min_rows": 1},
+    {"table": "stk_factor_pro", "code_col": "ts_code", "annual": False, "min_rows": 1},
+]
+
+_EIGHT_QUESTION_TABLE_EXISTENCE_REQUIRED = [
+    "stk_company",
+    "stk_managers",
+    "stk_rewards",
+    "fin_top10_holders",
+    "stk_name_history",
+    "fin_mainbz",
+    "stk_pledge_stat",
+    "stk_st_daily",
+    "fin_forecast",
+    "fin_express",
+]
+
+_EIGHT_QUESTION_DATA_REQUIRED = [
+    {"table": "fin_mainbz", "code_col": "ts_code", "annual": False, "min_rows": 1},
+    {"table": "stk_company", "code_col": "ts_code", "annual": False, "min_rows": 1},
+]
+
+_LOGICAL_TABLE_REQUIRED_COLUMNS: dict[str, set[str]] = {
+    "fin_income": {"ts_code", "end_date", "revenue"},
+    "fin_balance": {"ts_code", "end_date", "total_assets", "total_liab"},
+    "fin_cashflow": {"ts_code", "end_date", "n_cashflow_act"},
+    "fin_indicator": {"ts_code", "end_date", "roe"},
+    "idx_sw_l3_peers": {"anchor_ts_code", "peer_ts_code", "peer_is_self"},
+    "stk_factor_pro": {"ts_code", "trade_date"},
+    "stk_info": {"ts_code"},
+    "stk_company": {"ts_code"},
+    "stk_managers": {"ts_code", "name", "title"},
+    "stk_rewards": {"ts_code", "name", "title"},
+    "fin_top10_holders": {"ts_code", "end_date", "holder_name"},
+    "stk_name_history": {"ts_code", "name"},
+    "fin_mainbz": {"ts_code", "end_date", "bz_item"},
+    "stk_pledge_stat": {"ts_code", "end_date"},
+    "stk_st_daily": {"ts_code", "trade_date"},
+    "fin_forecast": {"ts_code", "ann_date", "end_date"},
+    "fin_express": {"ts_code", "ann_date", "end_date"},
+}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _default_db_path() -> Path:
     return PROJECT_ROOT / "data" / "ashare.duckdb"
+
+
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _is_valid_table_name(name: Any) -> bool:
+    return isinstance(name, str) and bool(_TABLE_NAME_RE.match(name.strip()))
+
+
+def _extract_source_target_mappings(payload: Any) -> dict[str, str]:
+    """Extract source_table->target_table pairs from list/dict payload.
+
+    Supports:
+    - {"tables": [{"source_table": ..., "target_table": ...}, ...]}
+    - [{"source_table": ..., "target_table": ...}, ...]
+    """
+    if isinstance(payload, dict):
+        entries = payload.get("tables", [])
+    elif isinstance(payload, list):
+        entries = payload
+    else:
+        return {}
+
+    if not isinstance(entries, list):
+        return {}
+
+    mappings: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        src = entry.get("source_table")
+        tgt = entry.get("target_table")
+        if not (_is_valid_table_name(src) and _is_valid_table_name(tgt)):
+            continue
+        src_s = str(src).strip()
+        tgt_s = str(tgt).strip()
+        if src_s == tgt_s:
+            continue
+        mappings[src_s] = tgt_s
+    return mappings
+
+
+def _table_exists(con: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    row = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+        [table_name],
+    ).fetchone()
+    return bool(row and row[0] > 0)
+
+
+def _load_mapping_registry_fallback() -> dict[str, str]:
+    """Read source_table->target_table from tushare-duckdb-sync/templates/mapping_registry.json.
+
+    Silently returns {} when the file is absent, empty, or unparseable.
+    Only entries where source_table != target_table are included.
+    """
+    registry_path = (
+        PROJECT_ROOT / "tushare-duckdb-sync" / "templates" / "mapping_registry.json"
+    )
+    if not registry_path.exists():
+        return {}
+    try:
+        payload = json.loads(registry_path.read_text(encoding="utf-8"))
+        return _extract_source_target_mappings(payload)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _load_task_config_fallback() -> dict[str, str]:
+    """Read source_table->target_table from tushare-duckdb-sync/templates/task_config.json.
+
+    Silently returns {} when the file is absent, empty, or unparseable.
+    """
+    task_config_path = PROJECT_ROOT / "tushare-duckdb-sync" / "templates" / "task_config.json"
+    if not task_config_path.exists():
+        return {}
+    try:
+        payload = json.loads(task_config_path.read_text(encoding="utf-8"))
+        return _extract_source_target_mappings(payload)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _load_table_map(table_map_arg: str | None) -> dict[str, str]:
+    """Load logical->physical mapping from CLI arg, env, or mapping_registry fallback.
+
+    Priority:
+    1) --db-table-map passed as JSON string or JSON file path
+    2) env SEVEN_LOOK_DB_TABLE_MAP as JSON string
+     3) auto-scan tushare-duckdb-sync/templates/mapping_registry.json
+         and templates/task_config.json for source_table -> target_table
+         entries where names differ
+
+    Explicit mappings (1/2) always override registry fallback (3).
+    """
+    raw = table_map_arg
+    if not raw:
+        raw = os.environ.get("SEVEN_LOOK_DB_TABLE_MAP")
+
+    # Priority 3 fallback (always loaded; overridden by explicit mapping below)
+    base: dict[str, str] = _load_task_config_fallback()
+    base.update(_load_mapping_registry_fallback())
+
+    if not raw:
+        return base
+
+    maybe_path = Path(raw).expanduser()
+    try:
+        if maybe_path.exists():
+            payload = json.loads(maybe_path.read_text(encoding="utf-8"))
+        else:
+            payload = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return base
+
+    if not isinstance(payload, dict):
+        return base
+
+    explicit = {
+        str(k): str(v)
+        for k, v in payload.items()
+        if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip()
+    }
+    return {**base, **explicit}
+
+
+def _list_relations(con: duckdb.DuckDBPyConnection) -> list[str]:
+    rows = con.execute(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        """
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def _discover_relation_by_columns(
+    con: duckdb.DuckDBPyConnection,
+    logical_name: str,
+) -> tuple[str | None, list[str]]:
+    required = _LOGICAL_TABLE_REQUIRED_COLUMNS.get(logical_name)
+    if not required:
+        return None, []
+
+    candidates: list[str] = []
+    for relation_name in _list_relations(con):
+        cols = _table_columns(con, relation_name)
+        if required.issubset(cols):
+            candidates.append(relation_name)
+
+    if not candidates:
+        return None, []
+    if len(candidates) == 1:
+        return candidates[0], candidates
+
+    # Prefer fuzzy name match to reduce ambiguity when several relations share same columns.
+    logical_tokens = [tok for tok in logical_name.split("_") if tok]
+    ranked = sorted(
+        candidates,
+        key=lambda name: sum(1 for tok in logical_tokens if tok in name),
+        reverse=True,
+    )
+    top_score = sum(1 for tok in logical_tokens if tok in ranked[0])
+    second_score = sum(1 for tok in logical_tokens if tok in ranked[1]) if len(ranked) > 1 else -1
+    if top_score > second_score:
+        return ranked[0], candidates
+    return None, candidates
+
+
+def _resolve_relation_name(
+    con: duckdb.DuckDBPyConnection,
+    logical_name: str,
+    table_map: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """Resolve physical relation by mapping first, then direct name, then column-based auto-discovery.
+
+    Returns (resolved_name, note)
+    """
+    mapped = table_map.get(logical_name)
+    if mapped:
+        if _table_exists(con, mapped):
+            return mapped, f"mapped:{logical_name}->{mapped}"
+        return None, f"mapped-missing:{logical_name}->{mapped}"
+
+    if _table_exists(con, logical_name):
+        return logical_name, "exact"
+
+    discovered, candidates = _discover_relation_by_columns(con, logical_name)
+    if discovered:
+        return discovered, f"auto-discovered:{logical_name}->{discovered}"
+    if candidates:
+        return None, f"ambiguous:{logical_name}:{','.join(candidates[:5])}"
+    return None, "not-found"
+
+
+def _table_columns(con: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    rows = con.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = ?
+        """,
+        [table_name],
+    ).fetchall()
+    return {str(r[0]) for r in rows}
+
+
+def _count_rows_for_stock(
+    con: duckdb.DuckDBPyConnection,
+    relation_name: str,
+    code_col: str,
+    stock: str,
+    *,
+    annual: bool,
+) -> int:
+    columns = _table_columns(con, relation_name)
+    sql = f"SELECT COUNT(*) FROM {relation_name} WHERE {code_col} = ?"
+    params: list[Any] = [stock]
+    if annual and "end_date" in columns:
+        sql += " AND EXTRACT(MONTH FROM end_date) = 12 AND EXTRACT(DAY FROM end_date) = 31"
+    row = con.execute(sql, params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _build_sync_command_hint(table_name: str, db_path: str) -> str:
+    return (
+        "conda run -n legonanobot python "
+        "tushare-duckdb-sync/scripts/sync_table.py "
+        f"--table {table_name} --db-path {db_path}"
+    )
+
+
+def _run_duckdb_preflight(
+    stock: str,
+    db_path: str,
+    *,
+    include_eight_questions: bool,
+    table_map: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    preflight: dict[str, Any] = {
+        "status": "ready",
+        "missing_tables": [],
+        "insufficient_data": [],
+        "human_in_loop_requests": [],
+        "resolved_relations": {},
+        "alias_shim_required": [],
+    }
+
+    db_file = Path(db_path)
+    if not db_file.exists():
+        preflight["status"] = "human-in-loop-required"
+        preflight["human_in_loop_requests"].append(
+            f"DuckDB 文件不存在: {db_file}。请提供正确 --db-path，或先构建数据库。"
+        )
+        return preflight
+
+    table_map = table_map or {}
+
+    required_tables = list(_SEVEN_LOOK_TABLE_EXISTENCE_REQUIRED)
+    data_requirements = list(_SEVEN_LOOK_DATA_REQUIRED)
+    if include_eight_questions:
+        required_tables.extend(_EIGHT_QUESTION_TABLE_EXISTENCE_REQUIRED)
+        data_requirements.extend(_EIGHT_QUESTION_DATA_REQUIRED)
+
+    try:
+        con = duckdb.connect(str(db_file), read_only=True)
+    except Exception as exc:  # noqa: BLE001
+        preflight["status"] = "human-in-loop-required"
+        preflight["human_in_loop_requests"].append(
+            f"DuckDB 打开失败: {type(exc).__name__}: {exc}。请确认数据库文件可读且未损坏。"
+        )
+        return preflight
+
+    try:
+        for logical_name in required_tables:
+            resolved_name, note = _resolve_relation_name(con, logical_name, table_map)
+            if resolved_name:
+                preflight["resolved_relations"][logical_name] = {
+                    "relation": resolved_name,
+                    "resolution": note,
+                }
+                if resolved_name != logical_name:
+                    # Record the shim for informational purposes; the mapping layer
+                    # passes SEVEN_LOOK_DB_TABLE_MAP to subprocesses so no view creation
+                    # is required.
+                    shim_sql = (
+                        f"CREATE OR REPLACE VIEW {logical_name} AS "
+                        f"SELECT * FROM {resolved_name};"
+                    )
+                    preflight["alias_shim_required"].append(
+                        {
+                            "logical_table": logical_name,
+                            "resolved_relation": resolved_name,
+                            "suggested_sql": shim_sql,
+                        }
+                    )
+                continue
+            preflight["missing_tables"].append(logical_name)
+            if note and note.startswith("ambiguous:"):
+                preflight["human_in_loop_requests"].append(
+                    f"逻辑表 {logical_name} 检测到多个候选关系（{note}），"
+                    "请通过 --db-table-map 指定唯一映射。"
+                )
+            elif note and note.startswith("mapped-missing:"):
+                preflight["human_in_loop_requests"].append(
+                    f"逻辑表 {logical_name} 的映射目标不存在（{note}），"
+                    "请修正 --db-table-map 或同步对应表。"
+                )
+            else:
+                preflight["human_in_loop_requests"].append(
+                    "缺失逻辑数据域 "
+                    f"{logical_name}。请先同步兼容表，或通过 --db-table-map 指定物理表名。"
+                )
+
+        for req in data_requirements:
+            logical_name = str(req["table"])
+            code_col = str(req["code_col"])
+            annual = bool(req.get("annual", False))
+            min_rows = int(req.get("min_rows", 1))
+
+            if logical_name in preflight["missing_tables"]:
+                continue
+            resolved_name = preflight["resolved_relations"].get(logical_name, {}).get("relation")
+            if not resolved_name:
+                continue
+            try:
+                count = _count_rows_for_stock(
+                    con,
+                    resolved_name,
+                    code_col,
+                    stock,
+                    annual=annual,
+                )
+            except Exception as exc:  # noqa: BLE001
+                preflight["insufficient_data"].append(
+                    {
+                        "table": logical_name,
+                        "relation": resolved_name,
+                        "code_col": code_col,
+                        "stock": stock,
+                        "count": 0,
+                        "required": min_rows,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+                preflight["human_in_loop_requests"].append(
+                    f"关系 {resolved_name}（逻辑域 {logical_name}）校验失败（{type(exc).__name__}: {exc}）。"
+                    f" 请检查表结构并重建数据：{_build_sync_command_hint(logical_name, db_path)}"
+                )
+                continue
+
+            if count >= min_rows:
+                continue
+            preflight["insufficient_data"].append(
+                {
+                    "table": logical_name,
+                    "relation": resolved_name,
+                    "code_col": code_col,
+                    "stock": stock,
+                    "count": count,
+                    "required": min_rows,
+                }
+            )
+            annual_hint = "（年报口径，仅统计 12-31 期末）" if annual else ""
+            preflight["human_in_loop_requests"].append(
+                f"关系 {resolved_name}（逻辑域 {logical_name}）在 {code_col}={stock} 下记录数为 {count}，"
+                f"低于最低要求 {min_rows}{annual_hint}。"
+                f" 请同步该证券数据并复核：{_build_sync_command_hint(logical_name, db_path)}"
+            )
+    finally:
+        con.close()
+
+    if preflight["missing_tables"] or preflight["insufficient_data"]:
+        preflight["status"] = "human-in-loop-required"
+    return preflight
+
+
+def _render_preflight_blocked_json(
+    stock: str,
+    as_of_date: str,
+    lookback_years: int | None,
+    preflight: dict[str, Any],
+) -> str:
+    payload = {
+        "framework": "七看财务质量综合评估",
+        "stock": stock,
+        "as_of_date": as_of_date,
+        "lookback_years": lookback_years,
+        "orchestration_status": "blocked",
+        "block_reason": "duckdb-preflight-failed",
+        "preflight": preflight,
+        "quality_score": None,
+        "red_flags": [],
+        "commentary": "编排已阻断：DuckDB 关键表缺失或关键证券数据不足，需先补齐数据后再执行七看八问。",
+        "human_in_loop_requests": preflight.get("human_in_loop_requests", []),
+        "recommendations": [
+            {
+                "priority": "high",
+                "action": "先补数再重跑",
+                "detail": "按 human_in_loop_requests 中的具体命令补齐 DuckDB 表/证券数据，然后重新执行编排。",
+            }
+        ],
+        "results": {},
+        "look_results": {},
+        "raw_results": {},
+        "intermediate_files": None,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+
+
+def _render_preflight_blocked_markdown(
+    stock: str,
+    as_of_date: str,
+    lookback_years: int | None,
+    preflight: dict[str, Any],
+) -> str:
+    lines: list[str] = []
+    lines.append("# 七看财务质量综合评估报告（阻断）")
+    lines.append("")
+    lines.append(f"- 股票代码: {stock}")
+    lines.append(f"- 分析日期: {as_of_date}")
+    lines.append(f"- 回看年数: {lookback_years or '各维度默认'}")
+    lines.append("- 编排状态: blocked（duckdb-preflight-failed）")
+    lines.append("")
+    lines.append("## 阻断原因")
+    lines.append("")
+    lines.append("DuckDB 关键表缺失或关键证券数据不足。为避免在证据不全时强行作答，编排已提前终止。")
+    lines.append("")
+
+    missing_tables = preflight.get("missing_tables") or []
+    if missing_tables:
+        lines.append("## 缺失表")
+        lines.append("")
+        for table_name in missing_tables:
+            lines.append(f"- {table_name}")
+        lines.append("")
+
+    insufficient = preflight.get("insufficient_data") or []
+    if insufficient:
+        lines.append("## 关键数据不足")
+        lines.append("")
+        for item in insufficient:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"- {item.get('table')} | {item.get('code_col')}={item.get('stock')} | "
+                f"count={item.get('count')} / required={item.get('required')}"
+            )
+        lines.append("")
+
+    requests = preflight.get("human_in_loop_requests") or []
+    if requests:
+        lines.append("## 待人工补充信息")
+        lines.append("")
+        for idx, req in enumerate(requests, 1):
+            lines.append(f"{idx}. {req}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _parse_date(value: str | None) -> date:
@@ -175,6 +706,7 @@ def _run_look(
     db_path: str,
     extra_args: dict[str, str | None],
     timeout_seconds: int,
+    table_map_json: str | None = None,
 ) -> dict[str, Any]:
     """Run a single look script as a subprocess and return its JSON output."""
     script_path = SKILLS_ROOT / spec["skill_dir"] / "scripts" / spec["script"]
@@ -209,11 +741,15 @@ def _run_look(
                 cmd.extend(["--employee-count-bundle", bundle_path])
 
     try:
+        env = {**os.environ}
+        if table_map_json:
+            env["SEVEN_LOOK_DB_TABLE_MAP"] = table_map_json
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return {
@@ -336,6 +872,7 @@ def _run_eight_questions(
     base_output_dir: Path,
     look01_payload: dict[str, Any] | None,
     timeout_seconds: int,
+    table_map_json: str | None = None,
 ) -> dict[str, Any]:
     """Run look-08 as a subprocess, then read the full payload from its output file."""
     if not EIGHT_QUESTIONS_SCRIPT.exists():
@@ -360,11 +897,15 @@ def _run_eight_questions(
     ]
 
     try:
+        env = {**os.environ}
+        if table_map_json:
+            env["SEVEN_LOOK_DB_TABLE_MAP"] = table_map_json
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return _eight_questions_error(f"Execution timed out ({timeout_seconds}s)")
@@ -1222,6 +1763,14 @@ def main() -> None:
         default=180,
         help="look-08 子进程超时时间（秒），默认 180。",
     )
+    parser.add_argument(
+        "--db-table-map",
+        default=None,
+        help=(
+            "逻辑表名到物理表名映射。可传 JSON 字符串或 JSON 文件路径。"
+            "示例: '{\"fin_income\":\"my_fin_income\"}'"
+        ),
+    )
     args = parser.parse_args()
 
     if args.eight_questions_bundle:
@@ -1240,11 +1789,63 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    table_map = _load_table_map(args.db_table_map)
+
+    _log("[七看] Phase 0: DuckDB 数据门禁校验 ...")
+    preflight = _run_duckdb_preflight(
+        stock=args.stock,
+        db_path=args.db_path,
+        include_eight_questions=args.include_eight_questions,
+        table_map=table_map,
+    )
+    if preflight.get("status") != "ready":
+        _log("[七看]   → 门禁失败，停止编排，转入 human-in-loop")
+        if args.format == "json":
+            final_output = _render_preflight_blocked_json(
+                args.stock,
+                as_of_date,
+                args.lookback_years,
+                preflight,
+            )
+        else:
+            final_output = _render_preflight_blocked_markdown(
+                args.stock,
+                as_of_date,
+                args.lookback_years,
+                preflight,
+            )
+
+        final_output_path: Path | None = None
+        if args.final_output:
+            final_output_path = Path(args.final_output).expanduser().resolve()
+            final_output_path.parent.mkdir(parents=True, exist_ok=True)
+            final_output_path.write_text(final_output, encoding="utf-8")
+
+        print(final_output)
+        if final_output_path is not None:
+            print(f"[七看] 最终报告已保存至: {final_output_path}", file=sys.stderr)
+        print(f"\n[七看] 已阻断。中间目录: {output_dir}", file=sys.stderr)
+        return
+
     extra_args = {
         "report_bundle_04": args.report_bundle_04,
         "report_bundle_05": args.report_bundle_05,
         "employee_count_bundle_06": args.employee_count_bundle_06,
     }
+
+    # Build effective table map from preflight resolved relations and pass to subprocesses.
+    # Entries where physical name differs from logical name become VIEW shims inside each
+    # look subprocess via connect_read_only() in common.py.
+    _effective_map = {
+        logical: info["relation"]
+        for logical, info in preflight.get("resolved_relations", {}).items()
+        if info.get("relation") and info["relation"] != logical
+    }
+    effective_map_json: str | None = (
+        json.dumps(_effective_map, ensure_ascii=False) if _effective_map else None
+    )
+    if _effective_map:
+        _log(f"[七看] 映射层已激活 ({len(_effective_map)} 条逻辑→物理表名映射)")
 
     # Phase 1 & 2: Run all 7 looks
     results: dict[str, dict[str, Any]] = {}
@@ -1265,6 +1866,7 @@ def main() -> None:
             db_path=args.db_path,
             extra_args=extra_args,
             timeout_seconds=args.per_look_timeout,
+            table_map_json=effective_map_json,
         )
         # Write intermediate file（线程内独占该 rule_id 的文件名，无竞争）
         intermediate_path = output_dir / f"{rid}.json"
@@ -1299,6 +1901,7 @@ def main() -> None:
             base_output_dir=output_dir,
             look01_payload=results.get("look-01"),
             timeout_seconds=args.eight_questions_timeout,
+            table_map_json=effective_map_json,
         )
         print(
             "[七看]   → look-08 完成, overall_status="

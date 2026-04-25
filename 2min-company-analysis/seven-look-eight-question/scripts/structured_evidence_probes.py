@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -28,7 +30,47 @@ logger = logging.getLogger(__name__)
 def _connect(db_path: Path) -> duckdb.DuckDBPyConnection:
     if not db_path.exists():
         raise FileNotFoundError(f"DuckDB file not found: {db_path}")
-    return duckdb.connect(str(db_path), read_only=True)
+
+    raw_map = os.environ.get("SEVEN_LOOK_DB_TABLE_MAP", "")
+    table_map: dict[str, str] = {}
+    if raw_map:
+        try:
+            loaded = json.loads(raw_map)
+            if isinstance(loaded, dict):
+                table_map = {str(k): str(v) for k, v in loaded.items() if k != v}
+        except Exception:  # noqa: BLE001
+            pass
+
+    if not table_map:
+        return duckdb.connect(str(db_path), read_only=True)
+
+    def _quote_ident(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    con = duckdb.connect(":memory:")
+    safe_path = str(db_path).replace("'", "''")
+    con.execute(f"ATTACH '{safe_path}' AS physdb (READ_ONLY)")
+    phys_tables = {
+        str(r[0])
+        for r in con.execute(
+            "SELECT table_name FROM information_schema.tables"
+            " WHERE table_catalog = 'physdb' AND table_schema = 'main'"
+        ).fetchall()
+    }
+
+    for phys_name in sorted(phys_tables):
+        ident = _quote_ident(phys_name)
+        con.execute(f"CREATE VIEW {ident} AS SELECT * FROM physdb.{ident}")
+
+    for logical_name, physical_name in table_map.items():
+        if physical_name not in phys_tables:
+            continue
+        logical_ident = _quote_ident(logical_name)
+        physical_ident = _quote_ident(physical_name)
+        con.execute(
+            f"CREATE OR REPLACE VIEW {logical_ident} AS SELECT * FROM physdb.{physical_ident}"
+        )
+    return con
 
 
 def _rows_to_dicts(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:

@@ -16,7 +16,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_SHARED_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "seven-look-eight-question" / "scripts"
+def _find_analysis_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if parent.name != "2min-company-analysis":
+            continue
+        marker = parent / "seven-look-eight-question" / "scripts" / "eight_questions_domain.py"
+        if marker.exists():
+            return parent
+    raise RuntimeError(f"Cannot locate 2min-company-analysis root from: {current}")
+
+
+_SHARED_SCRIPTS_DIR = _find_analysis_root() / "seven-look-eight-question" / "scripts"
 if str(_SHARED_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_SCRIPTS_DIR))
 

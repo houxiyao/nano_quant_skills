@@ -10,9 +10,9 @@ from typing import Any
 import duckdb
 
 try:
-    from .common import CompanyProfile, detect_company_profile
+    from .common import CompanyProfile, detect_company_profile, connect_read_only
 except ImportError:
-    from common import CompanyProfile, detect_company_profile
+    from common import CompanyProfile, detect_company_profile, connect_read_only
 
 
 KEYWORDS = {
@@ -90,11 +90,6 @@ def _parse_date(value: str | None) -> date:
         return date.today()
     return datetime.strptime(value, "%Y-%m-%d").date()
 
-
-def _connect(db_path: Path) -> duckdb.DuckDBPyConnection:
-    if not db_path.exists():
-        raise FileNotFoundError(f"DuckDB file not found: {db_path}")
-    return duckdb.connect(str(db_path), read_only=True)
 
 
 def _normalize_report_year(value: Any) -> int:
@@ -480,7 +475,7 @@ def main() -> None:
     db_path = Path(args.db_path).expanduser().resolve()
     report_bundle = Path(args.report_bundle).expanduser().resolve() if args.report_bundle else None
 
-    with _connect(db_path) as con:
+    with connect_read_only(db_path) as con:
         profile = detect_company_profile(con, args.stock, as_of_date)
         if profile.is_financial:
             payload = {

@@ -17,10 +17,23 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
-SKILLS_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _find_analysis_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if parent.name != "2min-company-analysis":
+            continue
+        marker = parent / "seven-look-eight-question" / "assets" / "rule_registry.json"
+        if marker.exists():
+            return parent
+    raise RuntimeError(f"Cannot locate 2min-company-analysis root from: {current}")
+
+
+SKILLS_ROOT = _find_analysis_root()
 
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -93,9 +106,10 @@ def _build_question_modules() -> dict[int, Callable[..., EightQuestionAnswer]]:
             skill_dir=spec["skill_dir"],
             script_name=spec["script"],
         )
-        answer_fn = getattr(module, "answer", None)
-        if not callable(answer_fn):
+        raw_answer_fn = getattr(module, "answer", None)
+        if not callable(raw_answer_fn):
             raise RuntimeError(f"Question module missing callable answer(): {spec['skill_dir']}/{spec['script']}")
+        answer_fn = cast(Callable[..., EightQuestionAnswer], raw_answer_fn)
         modules[qid] = answer_fn
     return modules
 
@@ -170,7 +184,11 @@ def run_questions(
 
 def _summarize(results: dict[int, EightQuestionAnswer]) -> dict[str, Any]:
     ratings = [a.rating for a in results.values() if a.rating is not None]
-    weighted = [a.weighted_rating() for a in results.values() if a.weighted_rating() is not None]
+    weighted: list[float] = []
+    for answer in results.values():
+        wr = answer.weighted_rating()
+        if wr is not None:
+            weighted.append(wr)
     status_counts: dict[str, int] = {}
     for a in results.values():
         status_counts[a.status] = status_counts.get(a.status, 0) + 1

@@ -11,9 +11,9 @@ from typing import Any
 import duckdb
 
 try:
-    from .common import CompanyProfile, detect_company_profile
+    from .common import CompanyProfile, detect_company_profile, connect_read_only
 except ImportError:
-    from common import CompanyProfile, detect_company_profile
+    from common import CompanyProfile, detect_company_profile, connect_read_only
 
 
 REPORT_TYPE = "1"
@@ -84,11 +84,6 @@ def _parse_date(value: str | None) -> date:
         return date.today()
     return datetime.strptime(value, "%Y-%m-%d").date()
 
-
-def _connect(db_path: Path) -> duckdb.DuckDBPyConnection:
-    if not db_path.exists():
-        raise FileNotFoundError(f"DuckDB file not found: {db_path}")
-    return duckdb.connect(str(db_path), read_only=True)
 
 
 def _is_missing(value: Any) -> bool:
@@ -823,7 +818,7 @@ def main() -> None:
         else None
     )
 
-    with _connect(db_path) as con:
+    with connect_read_only(db_path) as con:
         profile = detect_company_profile(con, args.stock, as_of_date)
 
         if profile.is_financial:

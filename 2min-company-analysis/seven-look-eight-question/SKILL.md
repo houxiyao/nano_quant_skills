@@ -54,14 +54,16 @@ python .github/skills/seven-look-eight-question/scripts/seven_looks_orchestrator
 | --include-eight-questions | | 调用本 skill 下的 `eight_questions_orchestrator.py`，把八问摘要合并进最终输出 |
 | --eight-questions-bundle | | **已废弃**。旧版 bundle 入口会显式报错，防止静默走错链路 |
 | --format | | markdown（默认）或 json |
+| --db-table-map | | 逻辑表名→物理表名映射（JSON 字符串或 JSON 文件路径），用于跨机器异构表名适配 |
 
 ### 执行流程
 
-1. **Phase 1（自动）**: 依次运行 look-01, 02, 03, 06, 07（纯数据库查询，无需外部输入）
-2. **Phase 2（半自动）**: 运行 look-04, 05（若未提供 --report-bundle 则标记 human-in-loop）
-3. **Phase 2.5（可选）**: 若传入 `--include-eight-questions`，调用本 skill 下的 `scripts/eight_questions_orchestrator.py`，并发调度 ask-q1 ~ ask-q8 的本地脚本，从 `eight_questions.json` 回读完整 payload，并补充 `cross_validation_flags`
-4. **Phase 3（汇总）**: 合并 7 份中间 JSON → 红旗预警 + 质量评分；八问不改动七看的评分体系
-5. **Phase 4（评语）**: 附加量化评语 + 最多 3 条行动建议
+1. **Phase 0（门禁）**: 先做 DuckDB 数据完整性预检（逻辑数据域检查 + 关键证券数据可用）。门禁会按 `--db-table-map` 先做显式映射，再按字段能力自动识别兼容关系（表/视图均可）。若缺表、映射冲突或核心数据不足，立即停止后续编排并输出 `human-in-loop` 精准补数清单。
+2. **Phase 1（自动）**: 依次运行 look-01, 02, 03, 06, 07（纯数据库查询，无需外部输入）
+3. **Phase 2（半自动）**: 运行 look-04, 05（若未提供 --report-bundle 则标记 human-in-loop）
+4. **Phase 2.5（可选）**: 若传入 `--include-eight-questions`，调用本 skill 下的 `scripts/eight_questions_orchestrator.py`，并发调度 ask-q1 ~ ask-q8 的本地脚本，从 `eight_questions.json` 回读完整 payload，并补充 `cross_validation_flags`
+5. **Phase 3（汇总）**: 合并 7 份中间 JSON → 红旗预警 + 质量评分；八问不改动七看的评分体系
+6. **Phase 4（评语）**: 附加量化评语 + 最多 3 条行动建议
 
 ### 输出内容
 
@@ -93,6 +95,14 @@ JSON 中与分项结果相关的 3 个字段职责如下：
 - `raw_results` 的存在不替代 `--output-dir` 下的 7 份中间 JSON 文件。中间文件仍是单个 look 的落盘产物，`raw_results` 是最终汇总输出中的内联透传副本。
 - `eight_questions` 是**独立扩展字段**，不并入 `results` / `look_results`，这样可保证原有七看消费者在不开新开关时完全无感。
 - `critical_gaps` 仅在启用八问时出现，承载八问总入口汇总出的关键证据缺口；这类缺口不直接影响七看评分，但应视为降低报告置信度的阻塞信息。
+
+当 Phase 0 预检失败时，输出契约如下：
+
+- 顶层新增 `orchestration_status = "blocked"`
+- 顶层新增 `block_reason = "duckdb-preflight-failed"`
+- 顶层新增 `preflight`（包含 `missing_tables`、`insufficient_data`、`human_in_loop_requests`、`resolved_relations`、`alias_shim_required`）
+- `results` / `look_results` / `raw_results` 为空对象，不继续执行 look-01..08
+- `human_in_loop_requests` 提供可直接执行的补数指令（按表、按证券精确定位）
 
 八问 summary 中的 `avg_weighted_rating` 语义说明：
 
