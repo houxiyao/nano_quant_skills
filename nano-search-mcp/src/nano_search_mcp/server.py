@@ -16,11 +16,12 @@ from nano_search_mcp.config import generate_sample_config, init_settings
 _mcp_instance: FastMCP | None = None
 
 _MCP_INSTRUCTIONS = (
-    "NanoSearch 是面向中国 A 股市场的结构化文本检索服务，按能力域提供以下 MCP 工具：\n"
+    "NanoSearch 同时提供通用网页搜索能力，以及面向中国 A 股场景的专用数据工具，按能力域提供以下 MCP 工具：\n"
     "\n"
     "【通用检索】\n"
     "- general_search: 面向外部 MCP Client / agent / skill 的默认网页检索入口；"
-    "当你需要开放式找资料、新闻、百科、公司信息、站点搜索时优先使用它。"
+    "当你需要开放式找资料、新闻、百科、公司信息、站点搜索，或任意主题网页搜索（例如“海豚的颜色”）时优先使用它。"
+    "它不限于公司或 A 股主题。"
     "支持 site 约束与关键词包含/排除规则，失败时返回 unavailable\n"
     "- search: 百炼 WebSearch 的低层原始包装，主要用于兼容旧调用；"
     "新接入通常应优先使用 general_search\n"

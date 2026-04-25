@@ -55,6 +55,7 @@ playwright install chromium
 |------|----------|------|
 | 不确定该用哪个搜索工具 | `general_search` | 对外默认网页检索入口，适合开放式找资料 |
 | 新闻、百科、公司资料、跨站检索 | `general_search` | 支持 `site` / `include_terms` / `exclude_terms` 约束 |
+| 任意开放主题，例如“海豚的颜色” | `general_search` | 真正的通用网页搜索，不限于公司或 A 股主题 |
 | 明确需要 `gov.cn` 产业政策/行业规范文件 | `list_industry_policies` | 政策专用接口，返回更适合政策取证的结果 |
 | 已依赖旧版 `[{title, url, snippet}]` 原始返回结构 | `search` | 兼容旧调用，不建议作为新接入默认入口 |
 
@@ -68,10 +69,18 @@ playwright install chromium
 
 部分 MCP 宿主不会直接显示原始工具名，而会在前面加上服务别名，例如：
 
-- `general_search` 可能显示为 `company_report_search_general_search`
-- `list_industry_policies` 可能显示为 `company_report_search_list_industry_policies`
+- 推荐：`general_search` 显示为 `nano_search_general_search`
+- 推荐：`list_industry_policies` 显示为 `nano_search_list_industry_policies`
 
 这类前缀通常由宿主配置决定，不由本服务控制；判断工具能力时应看后缀语义，而不是只看前缀。
+
+不建议把本服务挂载成 `company_report_search` 这类明显带有公司报告语义的别名。对于会根据工具名做路由或打分的 Agent 编排器，这会把 `general_search` 误导成“公司搜索域内的通用搜索”，削弱它作为真正开放式网页搜索入口的可发现性。
+
+推荐使用中性前缀，例如：
+
+1. `nano_search`
+2. `web_search`
+3. `open_web_search`
 
 如果你升级到包含 `general_search` 的版本后，宿主侧仍然只显示旧的工具清单，请优先：
 

@@ -79,3 +79,19 @@ def test_general_search_failure_returns_unavailable() -> None:
         assert result["source"] == "unavailable"
         assert result["results"] == []
         assert "upstream timeout" in result["error"]
+
+
+    def test_general_search_keeps_arbitrary_non_finance_queries_unchanged() -> None:
+        tool_fn = _get_tool_fn("general_search")
+
+        with patch("nano_search_mcp.tools.search._search_via_bailian") as mock_search:
+            mock_search.return_value = []
+
+            result = tool_fn(query="海豚的颜色")
+
+            assert result["source"] == "bailian_web_search"
+            assert result["query"] == "海豚的颜色"
+
+            called = mock_search.call_args
+            assert called is not None
+            assert called.kwargs["query"] == "海豚的颜色"

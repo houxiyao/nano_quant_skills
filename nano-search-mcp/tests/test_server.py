@@ -90,6 +90,8 @@ def test_server_instructions_include_search_routing_guidance():
     assert "优先使用 general_search" in instructions
     assert "只有在需要明确的 gov.cn 政策证据时才使用 list_industry_policies" in instructions
     assert "search 是低层兼容接口" in instructions
+    assert "海豚的颜色" in instructions
+    assert "不限于公司或 A 股主题" in instructions
 
 
 def test_tool_descriptions_help_external_clients_choose_search_tools():
@@ -103,6 +105,8 @@ def test_tool_descriptions_help_external_clients_choose_search_tools():
 
     assert "默认网页检索入口" in general_desc
     assert "优先使用本工具" in general_desc
+    assert "海豚的颜色" in general_desc
+    assert "不限于公司或 A 股主题" in general_desc
 
     assert "低层原始包装" in search_desc
     assert "优先使用``general_search``".replace("`", "") not in search_desc

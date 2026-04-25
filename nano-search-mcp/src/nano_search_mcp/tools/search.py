@@ -129,6 +129,8 @@ def register_search_tools(mcp: FastMCP) -> None:
         """面向外部 MCP Client / agent / skill 的默认网页检索入口。
 
         适用于开放式找资料、新闻、百科、公司信息、站点搜索等通用场景。
+        不限于公司或 A 股主题；任意开放主题（例如 ``"海豚的颜色"``）
+        也应优先使用本工具。
         当调用方不确定该使用哪个检索工具时，优先使用本工具；只有在需要
         特定领域的结构化结果（例如 gov.cn 政策文件）时，再切换到专用工具。
 
@@ -153,6 +155,7 @@ def register_search_tools(mcp: FastMCP) -> None:
 
         Notes:
             - 该工具不抛异常，适合作为上层 Agent 的通用兜底检索入口。
+            - 该工具不会自动附加公司、证券、A 股等领域限定词。
             - 对于新接入的外部消费者，应优先选择本工具而不是 ``search``。
         """
         fetch_time = datetime.now(timezone.utc).isoformat()
