@@ -1,11 +1,13 @@
 ---
-name: tushare-duckdb-sync
+name: tushare-duckdb-sync-skill
 description: '从 Tushare Pro 同步数据到本地 DuckDB，支持全量/增量模式。包含环境初始化、数据同步、质检、文档生成完整流程。关键词: tushare, duckdb, 数据同步, ETL, 增量更新, 全量同步, 数据质检。'
 argument-hint: '输入 Tushare 文档地址或表名，可选同步模式（全量/增量）。'
 user-invocable: true
 ---
 
 # Tushare → DuckDB 数据同步工作流
+
+> 本目录是 **skill 文档（教 AI Agent 如何完成同步）**。如需直接运行的 cron 调度脚本（由本 skill 派生的产物），见 [`../tushare_duckdb_sync_scripts/`](../tushare_duckdb_sync_scripts/)。
 
 ## 根本目的
 
@@ -25,7 +27,7 @@ user-invocable: true
 本 Skill 采用「主工作流 + 子文件」组织，社区用户只需将 `scripts/` 复制到工作区即可使用。
 
 ```
-tushare-duckdb-sync/
+tushare_duckdb_sync_skills/
 ├── SKILL.md                                ← 本文件：编排工作流（Agent 阅读）
 ├── scripts/
 │   ├── sync_table.py                       ← 自包含同步脚本（无项目内部依赖）

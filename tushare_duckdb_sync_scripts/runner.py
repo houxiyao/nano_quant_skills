@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import duckdb
 
-from tushare_sync_scripts.common import SyncTask, bootstrap_project_path, log_event, period_to_duckdb_date, sql_placeholders
+from tushare_duckdb_sync_scripts.common import SyncTask, bootstrap_project_path, log_event, period_to_duckdb_date, sql_placeholders
 
 bootstrap_project_path()
 
-from etl.tushare_to_duckdb import (  # noqa: E402
+from tushare_duckdb_sync_scripts.etl.tushare_to_duckdb import (  # noqa: E402
     _parse_table_name,
     _qualified_name,
     _resolve_status_backend,

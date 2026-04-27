@@ -8,17 +8,18 @@ import sys
 from typing import List
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPT_ROOT = Path(__file__).resolve().parent
+WORKSPACE_ROOT = SCRIPT_ROOT.parent
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from tushare_sync_scripts.common import configure_logging, log_event, resolve_log_dir  # noqa: E402
+from tushare_duckdb_sync_scripts.common import configure_logging, log_event, resolve_log_dir  # noqa: E402
 
 
 GROUP_TO_SCRIPT = {
-    "trade-date": PROJECT_ROOT / "tushare_sync_scripts" / "run_trade_date_incremental.py",
-    "financial": PROJECT_ROOT / "tushare_sync_scripts" / "run_financial_period_overwrite.py",
-    "snapshot": PROJECT_ROOT / "tushare_sync_scripts" / "run_snapshot_refresh.py",
+    "trade-date": SCRIPT_ROOT / "run_trade_date_incremental.py",
+    "financial": SCRIPT_ROOT / "run_financial_period_overwrite.py",
+    "snapshot": SCRIPT_ROOT / "run_snapshot_refresh.py",
 }
 
 

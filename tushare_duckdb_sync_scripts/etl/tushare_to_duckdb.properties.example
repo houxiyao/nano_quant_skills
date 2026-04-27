@@ -1,0 +1,40 @@
+# Tushare -> DuckDB task configuration
+# Run with:
+# python etl/run_tushare_to_duckdb_task.py --config-file etl/tushare_to_duckdb.properties.example
+
+# Required
+TS_DUCKDB_ENDPOINT=stock_basic
+TS_DUCKDB_DUCKDB_PATH=./data/ashare.duckdb
+
+# Optional
+TS_DUCKDB_METHOD=query
+TS_DUCKDB_SOURCE_TABLE=stock_basic
+TS_DUCKDB_TARGET_TABLE=raw_stock_basic
+TS_DUCKDB_MODE=overwrite
+
+# Dimension mode: none | trade_date | period
+TS_DUCKDB_DIMENSION_TYPE=none
+# TS_DUCKDB_DIMENSION_FIELD=trade_date
+# TS_DUCKDB_START_DATE=20200101
+# TS_DUCKDB_END_DATE=20260416
+
+# Only pull missing dimensions and continue on failed dimensions
+TS_DUCKDB_SYNC_ALL=false
+
+# When false, empty payloads for incremental dimensions are marked failed so they can be retried later.
+# TS_DUCKDB_ALLOW_EMPTY_RESULT=false
+
+# Extra query kwargs in JSON object, e.g. fields/filters
+# TS_DUCKDB_PARAMS={"exchange":"SSE","list_status":"L"}
+
+# Pull tuning
+# TS_DUCKDB_LIMIT=10000
+TS_DUCKDB_MAX_RETRIES=3
+TS_DUCKDB_BASE_SLEEP_SECONDS=2
+TS_DUCKDB_SLEEP_SECONDS=0
+
+# Optional orchestration mode
+# TS_DUCKDB_TASKS_FILE=etl/tushare_to_duckdb.tasks.example.json
+# Task files also support param_sets and params_sql for dynamic fan-out.
+# TS_DUCKDB_TASKS_JSON=[{"endpoint":"moneyflow","source_table":"moneyflow","target_table":"raw_moneyflow","mode":"append","dimension_type":"trade_date","start_date":"20240101","sync_all":true}]
+# TS_DUCKDB_CONTINUE_ON_ERROR=true

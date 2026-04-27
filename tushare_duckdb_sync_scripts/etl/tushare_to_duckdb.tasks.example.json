@@ -1,0 +1,34 @@
+[
+  {
+    "endpoint": "stock_basic",
+    "source_table": "stock_basic",
+    "target_table": "raw_stock_basic",
+    "mode": "overwrite",
+    "dimension_type": "none"
+  },
+  {
+    "endpoint": "moneyflow",
+    "source_table": "moneyflow",
+    "target_table": "raw_moneyflow",
+    "mode": "append",
+    "dimension_type": "trade_date",
+    "start_date": "20100101",
+    "sync_all": true,
+    "max_retries": 3,
+    "base_sleep_seconds": 2.0,
+    "sleep_seconds": 0.2
+  },
+  {
+    "endpoint": "income",
+    "method": "query",
+    "source_table": "income",
+    "target_table": "raw_income",
+    "mode": "append",
+    "dimension_type": "period",
+    "start_date": "20100331",
+    "sync_all": true,
+    "max_retries": 3,
+    "base_sleep_seconds": 2.0,
+    "sleep_seconds": 0.2
+  }
+]

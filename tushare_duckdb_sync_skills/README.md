@@ -2,6 +2,8 @@
 
 将 [Tushare Pro](https://tushare.pro) 数据同步到本地 DuckDB，支持全量覆盖与增量追加。
 
+> 本目录是 **skill 文档 + 自包含脚本**（`SKILL.md` 教 Agent 如何完成同步）。如果你只想跑现成的 cron 调度，请直接看姊妹目录 [`../tushare_duckdb_sync_scripts/`](../tushare_duckdb_sync_scripts/)。
+
 ## 模块定位与依赖
 
 - 本模块是仓库的数据底座生产端。

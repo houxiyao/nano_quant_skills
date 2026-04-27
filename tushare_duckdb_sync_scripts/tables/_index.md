@@ -1,6 +1,6 @@
 # 表/视图索引
 
-DuckDB 路径: `/Users/mgong/LegoNanoBot/Qdata/duckdb/ashare.duckdb`
+DuckDB 默认路径: `./tushare_duckdb_sync_scripts/data/ashare.duckdb`（可通过 `--duckdb-path` 覆盖）
 
 | 模块 | 表名 | 列数 | 粒度 | 同步维度 | 描述 |
 |---|---|---:|---|---|---|

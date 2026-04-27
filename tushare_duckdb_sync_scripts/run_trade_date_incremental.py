@@ -7,11 +7,11 @@ from pathlib import Path
 import sys
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from tushare_sync_scripts.common import (  # noqa: E402
+from tushare_duckdb_sync_scripts.common import (  # noqa: E402
     bootstrap_project_path,
     configure_logging,
     ensure_tushare_token,
@@ -24,7 +24,7 @@ from tushare_sync_scripts.common import (  # noqa: E402
     resolve_log_dir,
     resolve_trade_window,
 )
-from tushare_sync_scripts.runner import BatchSummary, execute_etl_task, namespace_to_payload  # noqa: E402
+from tushare_duckdb_sync_scripts.runner import BatchSummary, execute_etl_task, namespace_to_payload  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:

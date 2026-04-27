@@ -14,13 +14,21 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence
 from loguru import logger
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DUCKDB_PATH = PROJECT_ROOT / "data" / "ashare.duckdb"
-DEFAULT_LOG_DIR = PROJECT_ROOT / "logs" / "tushare_sync"
-DEFAULT_LOCK_DIR = PROJECT_ROOT / "temporary" / "locks"
-REGISTRY_PATH = PROJECT_ROOT / "docs" / "mapping_registry.json"
-CONDA_SH_PATH = Path("/Users/mgong/miniforge3/etc/profile.d/conda.sh")
-CONDA_ENV_NAME = "legonanobot"
+PACKAGE_ROOT = Path(__file__).resolve().parent
+WORKSPACE_ROOT = PACKAGE_ROOT.parent
+# 数据库默认放在仓库根的 data/，与下游分析 skill (2min-company-analysis) 保持一致；
+# 可通过环境变量 TUSHARE_SYNC_DUCKDB_PATH 覆盖。
+DEFAULT_DUCKDB_PATH = (
+    Path(os.environ["TUSHARE_SYNC_DUCKDB_PATH"]).expanduser().resolve()
+    if os.environ.get("TUSHARE_SYNC_DUCKDB_PATH")
+    else WORKSPACE_ROOT / "data" / "ashare.duckdb"
+)
+DEFAULT_LOG_DIR = PACKAGE_ROOT / "logs" / "tushare_sync"
+DEFAULT_LOCK_DIR = PACKAGE_ROOT / "temporary" / "locks"
+REGISTRY_PATH = PACKAGE_ROOT / "mapping_registry.json"
+LEGACY_REGISTRY_PATH = WORKSPACE_ROOT / "docs" / "mapping_registry.json"
+CONDA_SH_PATH = Path(os.environ["CONDA_SH_PATH"]).expanduser().resolve() if os.environ.get("CONDA_SH_PATH") else None
+CONDA_ENV_NAME = os.environ.get("CONDA_ENV_NAME", "legonanobot")
 TRADE_DATE_PUBLISH_HOUR = 18
 
 
@@ -96,8 +104,33 @@ SPECIAL_TASK_OVERRIDES: Dict[str, Dict[str, Any]] = {
 
 
 def bootstrap_project_path() -> None:
-    if str(PROJECT_ROOT) not in sys.path:
-        sys.path.insert(0, str(PROJECT_ROOT))
+    if str(WORKSPACE_ROOT) not in sys.path:
+        sys.path.insert(0, str(WORKSPACE_ROOT))
+
+
+def resolve_registry_path(registry_path: Optional[Path] = None) -> Path:
+    explicit_path = registry_path or (
+        Path(os.environ["TUSHARE_SYNC_REGISTRY_PATH"]) if os.environ.get("TUSHARE_SYNC_REGISTRY_PATH") else None
+    )
+    if explicit_path is not None:
+        resolved_path = Path(explicit_path).expanduser().resolve()
+        if not resolved_path.exists():
+            raise FileNotFoundError(f"Mapping registry not found: {resolved_path}")
+        return resolved_path
+
+    for candidate in (REGISTRY_PATH, LEGACY_REGISTRY_PATH):
+        resolved_path = candidate.expanduser().resolve()
+        if resolved_path.exists():
+            return resolved_path
+
+    checked_paths = ", ".join(
+        str(candidate.expanduser().resolve()) for candidate in (REGISTRY_PATH, LEGACY_REGISTRY_PATH)
+    )
+    raise FileNotFoundError(
+        "Unable to locate mapping registry. "
+        f"Checked: {checked_paths}. "
+        "Set TUSHARE_SYNC_REGISTRY_PATH to override the default lookup."
+    )
 
 
 def ensure_tushare_token() -> None:
@@ -152,7 +185,7 @@ def file_lock(lock_name: str, lock_dir: Optional[Path] = None) -> Iterator[Path]
 
 
 def load_registry(registry_path: Optional[Path] = None) -> List[SyncTask]:
-    path = (registry_path or REGISTRY_PATH).expanduser().resolve()
+    path = resolve_registry_path(registry_path)
     raw = json.loads(path.read_text(encoding="utf-8"))
     tables = raw.get("tables", [])
     if not isinstance(tables, list):
