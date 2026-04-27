@@ -7,7 +7,7 @@ user-invocable: true
 
 # Q2 独立 Skill —— 竞争优势
 
-本 skill 只负责八问的 Q2：**竞争优势**（护城河）。它与其它 `ask-qN` 是**同级 sibling skill**；单独触发时直接运行本 skill 下的 `scripts/q02_moat.py`，共享 harness 位于 `seven-look-eight-question/scripts/`。
+本 skill 只负责八问的 Q2：**竞争优势**（护城河）。它与其它 `ask-qN` 是 `2min-company-analysis/` 目录树下的同级子目录技能；运行时依赖 `2min-company-analysis/seven-look-eight-question/scripts/` 下的共享 harness，因此必须在保留完整目录树的前提下在仓库根目录执行。
 
 ## 原文问句
 
@@ -40,7 +40,8 @@ user-invocable: true
 ## 执行方式
 
 ```bash
-python .github/skills/ask-q2-moat/scripts/q02_moat.py \
+# 在仓库根目录执行
+python 2min-company-analysis/ask-q2-moat/scripts/q02_moat.py \
     --ts-code 000002.SZ --output-dir /tmp/ask_q2
 ```
 

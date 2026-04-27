@@ -247,13 +247,13 @@ def _table_exists(con: duckdb.DuckDBPyConnection, table_name: str) -> bool:
 
 
 def _load_mapping_registry_fallback() -> dict[str, str]:
-    """Read source_table->target_table from tushare-duckdb-sync/templates/mapping_registry.json.
+    """Read source_table->target_table from tushare_duckdb_sync_skills/templates/mapping_registry.json.
 
     Silently returns {} when the file is absent, empty, or unparseable.
     Only entries where source_table != target_table are included.
     """
     registry_path = (
-        PROJECT_ROOT / "tushare-duckdb-sync" / "templates" / "mapping_registry.json"
+        PROJECT_ROOT / "tushare_duckdb_sync_skills" / "templates" / "mapping_registry.json"
     )
     if not registry_path.exists():
         return {}
@@ -265,11 +265,11 @@ def _load_mapping_registry_fallback() -> dict[str, str]:
 
 
 def _load_task_config_fallback() -> dict[str, str]:
-    """Read source_table->target_table from tushare-duckdb-sync/templates/task_config.json.
+    """Read source_table->target_table from tushare_duckdb_sync_skills/templates/task_config.json.
 
     Silently returns {} when the file is absent, empty, or unparseable.
     """
-    task_config_path = PROJECT_ROOT / "tushare-duckdb-sync" / "templates" / "task_config.json"
+    task_config_path = PROJECT_ROOT / "tushare_duckdb_sync_skills" / "templates" / "task_config.json"
     if not task_config_path.exists():
         return {}
     try:
@@ -285,7 +285,7 @@ def _load_table_map(table_map_arg: str | None) -> dict[str, str]:
     Priority:
     1) --db-table-map passed as JSON string or JSON file path
     2) env SEVEN_LOOK_DB_TABLE_MAP as JSON string
-     3) auto-scan tushare-duckdb-sync/templates/mapping_registry.json
+     3) auto-scan tushare_duckdb_sync_skills/templates/mapping_registry.json
          and templates/task_config.json for source_table -> target_table
          entries where names differ
 
@@ -424,7 +424,7 @@ def _count_rows_for_stock(
 def _build_sync_command_hint(table_name: str, db_path: str) -> str:
     return (
         "conda run -n legonanobot python "
-        "tushare-duckdb-sync/scripts/sync_table.py "
+        "tushare_duckdb_sync_skills/scripts/sync_table.py "
         f"--table {table_name} --db-path {db_path}"
     )
 

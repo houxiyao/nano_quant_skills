@@ -10,6 +10,7 @@ Harness 原则见 SKILL.md 顶部：禁止编造、必标来源、研报/IR 自�
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -283,34 +284,26 @@ EIGHT_QUESTIONS: list[dict[str, Any]] = [
 
 
 def project_root() -> Path:
-    """Enhanced project_root to handle symlinks and find SparkRDAgent."""
-    # 1. Try to find based on content (preferred)
-    here = Path(__file__).resolve()
-    for p in [here, *here.parents]:
-        if (p / "data" / "ashare.duckdb").exists():
-            return p
-    
-    # 2. Try absolute path (no resolve)
-    here2 = Path(__file__).absolute()
-    for p in [here2, *here2.parents]:
-        if (p / "data" / "ashare.duckdb").exists():
-            return p
+    """返回仓库根目录。
 
-    # 3. Specifically look for SparkRDAgent in parents if we are in nano_quant_skills
-    for p in [here, here2]:
-        for parent in p.parents:
-            # Check sibling SparkRDAgent
-            sibling_spark = parent.parent / "SparkRDAgent"
-            if (sibling_spark / "data" / "ashare.duckdb").exists():
-                return sibling_spark
-            if (parent / "data" / "ashare.duckdb").exists():
-                return parent
-
-    # Fallback to current script's 4th parent
-    return here.parents[4] if len(here.parents) > 4 else here.parent
+    本文件位于 ``2min-company-analysis/seven-look-eight-question/scripts/``，
+    仓库根固定为 ``parents[3]``。该函数仅返回**目录路径**，不保证其下存在 DuckDB；
+    数据库文件路径请用 :func:`default_db_path`，并允许通过 ``ASHARE_DUCKDB_PATH``
+    环境变量覆盖。
+    """
+    return Path(__file__).resolve().parents[3]
 
 
 def default_db_path() -> Path:
+    """默认 DuckDB 路径。
+
+    优先使用 ``ASHARE_DUCKDB_PATH`` 环境变量，便于开源用户把数据放到任意位置；
+    未设置时回退到仓库根的 ``data/ashare.duckdb``，与
+    ``tushare_duckdb_sync_scripts.common.DEFAULT_DUCKDB_PATH`` 保持一致。
+    """
+    override = os.environ.get("ASHARE_DUCKDB_PATH")
+    if override:
+        return Path(override).expanduser().resolve()
     return project_root() / "data" / "ashare.duckdb"
 
 

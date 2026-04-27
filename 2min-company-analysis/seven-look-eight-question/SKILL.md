@@ -20,19 +20,19 @@ user-invocable: true
 ### 执行命令
 
 ```bash
-# 全自动模式（look-04/05 将标记为需人工补充年报）
-python .github/skills/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
+# 在仓库根目录执行；全自动模式（look-04/05 将标记为需人工补充年报）
+python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
     --stock 000002.SZ --as-of-date 2025-04-30
 
 # 提供年报文本后完整执行
-python .github/skills/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
+python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
     --stock 000002.SZ --as-of-date 2025-04-30 \
     --report-bundle-04 /path/to/reports.json \
     --report-bundle-05 /path/to/notes.json \
     --final-output /path/to/final-report.json
 
 # 在七看总报告中并入八问摘要（evidence harness 自动取证）
-python .github/skills/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
+python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
     --stock 000002.SZ --as-of-date 2025-04-30 \
     --include-eight-questions \
     --format json \

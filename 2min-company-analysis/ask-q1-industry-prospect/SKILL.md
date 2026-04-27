@@ -7,7 +7,7 @@ user-invocable: true
 
 # Q1 独立 Skill —— 行业前景
 
-本 skill 只负责八问的 Q1：**行业前景**。它与其它 `ask-qN` 是**同级 sibling skill**；单独触发时直接运行本 skill 下的 `scripts/q01_industry.py`，共享 harness 位于 `seven-look-eight-question/scripts/`。
+本 skill 只负责八问的 Q1：**行业前景**。它与其它 `ask-qN` 是 `2min-company-analysis/` 目录树下的同级子目录技能；运行时依赖 `2min-company-analysis/seven-look-eight-question/scripts/` 下的共享 harness（`eight_questions_domain.py` 等），因此必须在保留完整目录树的前提下在仓库根目录执行。
 
 ## 原文问句
 
@@ -43,7 +43,8 @@ user-invocable: true
 ## 执行方式
 
 ```bash
-python .github/skills/ask-q1-industry-prospect/scripts/q01_industry.py \
+# 在仓库根目录执行
+python 2min-company-analysis/ask-q1-industry-prospect/scripts/q01_industry.py \
     --ts-code 000002.SZ --output-dir /tmp/ask_q1
 ```
 

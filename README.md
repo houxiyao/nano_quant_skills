@@ -4,19 +4,23 @@
 
 ## 模块依赖关系
 
-- `tushare-duckdb-sync`：上游数据生产模块，负责把 Tushare 数据写入 DuckDB。
+- `tushare_duckdb_sync_skills`：上游数据生产 **skill 文档**（教 Agent 如何把 Tushare 数据写入 DuckDB）。
+- `tushare_duckdb_sync_scripts`：上面 skill 派生的可执行 cron 调度脚本（运行时产物）。
 - `nano-search-mcp`：外部证据模块，提供公告/年报/政策/IR 等检索与正文抓取。
 - `2min-company-analysis`：分析与编排模块，消费 DuckDB 数据，并可选消费 `nano-search-mcp` 的外部证据。
 
-推荐依赖链路：`tushare-duckdb-sync -> nano-search-mcp -> 2min-company-analysis`。
+推荐依赖链路：`tushare_duckdb_sync_skills/scripts -> nano-search-mcp -> 2min-company-analysis`。
 
 ## 文档索引（层级）
 
 ### 1) 数据同步模块
 
-- [tushare-duckdb-sync](tushare-duckdb-sync/)
-  - 作用：从 Tushare Pro 同步数据到本地 DuckDB。
-  - 文档入口：[tushare-duckdb-sync/README.md](tushare-duckdb-sync/README.md)
+- [tushare_duckdb_sync_skills](tushare_duckdb_sync_skills/)
+  - 作用：从 Tushare Pro 同步数据到本地 DuckDB（skill 文档 + 自包含脚本）。
+  - 文档入口：[tushare_duckdb_sync_skills/README.md](tushare_duckdb_sync_skills/README.md)
+- [tushare_duckdb_sync_scripts](tushare_duckdb_sync_scripts/)
+  - 作用：由上面 skill 产出的 cron 调度脚本集合（按 `trade_date` / `period` / `snapshot` 三类节奏批量同步）。
+  - 文档入口：[tushare_duckdb_sync_scripts/README.md](tushare_duckdb_sync_scripts/README.md)
 
 ### 2) 数据搜索模块
 
@@ -59,7 +63,7 @@
 
 ## 推荐使用顺序
 
-1. 先执行 [tushare-duckdb-sync](tushare-duckdb-sync/) 同步本地 DuckDB 数据。
+1. 先按 [tushare_duckdb_sync_skills](tushare_duckdb_sync_skills/) 完成环境初始化和 DuckDB 数据同步（或直接用 [tushare_duckdb_sync_scripts](tushare_duckdb_sync_scripts/) 跑 cron 调度脚本）。
 2. 如需公告、年报、政策、IR 等外部证据，安装并使用 [nano-search-mcp](nano-search-mcp/)。
 3. 再进入 [2min-company-analysis/README.md](2min-company-analysis/README.md) 选择总编排或单独 look/ask。
 
@@ -83,7 +87,8 @@ python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orche
 ```text
 nano_quant_skills/
 ├── README.md
-├── tushare-duckdb-sync/
+├── tushare_duckdb_sync_skills/    # AI skill：教 agent 如何同步 Tushare→DuckDB
+├── tushare_duckdb_sync_scripts/   # 由上面 skill 派生的 cron 调度脚本
 ├── nano-search-mcp/
 └── 2min-company-analysis/
     ├── README.md
@@ -94,7 +99,7 @@ nano_quant_skills/
 
 ## 作为 AI Skill 使用
 
-- 技能型目录（如 `tushare-duckdb-sync`、`2min-company-analysis` 下各子 skill）：可通过 `SKILL.md` 被 AI Agent 直接引用。
+- 技能型目录（如 `tushare_duckdb_sync_skills`、`2min-company-analysis` 下各子 skill）：可通过 `SKILL.md` 被 AI Agent 直接引用。
 - `nano-search-mcp`：这是 MCP 服务子模块，不是单个 `SKILL.md` 目录；应按其 README 安装为 Python 包或 MCP 服务，而不是直接复制进 `.github/skills/`。
 
 ## 许可

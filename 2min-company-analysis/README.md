@@ -102,9 +102,9 @@ python 2min-company-analysis/ask-q1-industry-prospect/scripts/q01_industry.py \
 
 ## 与其它子模块关系
 
-- 结构化数据来源：[tushare-duckdb-sync](../tushare-duckdb-sync/README.md)
+- 结构化数据来源：[tushare_duckdb_sync_skills](../tushare_duckdb_sync_skills/README.md) 与 [tushare_duckdb_sync_scripts](../tushare_duckdb_sync_scripts/README.md)
 - 外部证据搜索：[nano-search-mcp](../nano-search-mcp/README.md)
-- 依赖关系：`tushare-duckdb-sync` 为必选；`nano-search-mcp` 为可选增强（启用外部证据时建议安装）
+- 依赖关系：`tushare_duckdb_sync_skills`（及其脚本）为必选；`nano-search-mcp` 为可选增强（启用外部证据时建议安装）
 
 若要启用八问中的外部证据取证链路，建议先在仓库根目录安装搜索子模块：
 
@@ -127,6 +127,6 @@ export DASHSCOPE_API_KEY=your_token
 
 ## 推荐流程
 
-1. 先用 `tushare-duckdb-sync` 同步结构化数据。
+1. 先用 `tushare_duckdb_sync_skills` / `tushare_duckdb_sync_scripts` 同步结构化数据。
 2. 如需外部证据，安装 `nano-search-mcp` 并启动或导入使用。
 3. 再执行本模块的总编排或单项规则。

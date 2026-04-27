@@ -11,7 +11,7 @@ NanoSearchMCP 是一个可独立部署、可被外部 Agent / Skill / MCP Client
 - 典型搭配：作为独立 MCP 服务接入其它 Agent runtime，或作为 Python 包嵌入上层编排
 - 注意：这是 MCP 服务包，不是单个 `SKILL.md` 技能目录
 - 上游/下游关系：
-  - 上游数据底座：`tushare-duckdb-sync`（提供结构化指标，不直接依赖本模块）
+  - 上游数据底座：`tushare_duckdb_sync_skills` / `tushare_duckdb_sync_scripts`（提供结构化指标，不直接依赖本模块）
   - 直接下游：`2min-company-analysis`（在外部证据采集阶段导入 `nano_search_mcp.tools.*`）
 
 在当前 mono-repo 中推荐安装方式：
