@@ -10,7 +10,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from tushare_duckdb_sync_scripts.common import (  # noqa: E402
+from tushare_to_duckdb.tushare_duckdb_sync_scripts.common import (  # noqa: E402
     bootstrap_project_path,
     configure_logging,
     ensure_tushare_token,
@@ -23,7 +23,7 @@ from tushare_duckdb_sync_scripts.common import (  # noqa: E402
     resolve_log_dir,
     resolve_recent_report_periods,
 )
-from tushare_duckdb_sync_scripts.runner import BatchSummary, execute_etl_task, namespace_to_payload, reset_period_state  # noqa: E402
+from tushare_to_duckdb.tushare_duckdb_sync_scripts.runner import BatchSummary, execute_etl_task, namespace_to_payload, reset_period_state  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:

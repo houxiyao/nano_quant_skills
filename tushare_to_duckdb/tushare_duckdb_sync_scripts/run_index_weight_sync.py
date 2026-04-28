@@ -19,7 +19,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from tushare_duckdb_sync_scripts.common import (
+from tushare_to_duckdb.tushare_duckdb_sync_scripts.common import (
     bootstrap_project_path,
     configure_logging,
     ensure_tushare_token,
@@ -27,7 +27,7 @@ from tushare_duckdb_sync_scripts.common import (
     resolve_duckdb_path,
     resolve_log_dir,
 )
-from tushare_duckdb_sync_scripts.etl.sync_by_index_code import main as run_sync_by_index_code
+from tushare_to_duckdb.tushare_duckdb_sync_scripts.etl.sync_by_index_code import main as run_sync_by_index_code
 from loguru import logger
 
 

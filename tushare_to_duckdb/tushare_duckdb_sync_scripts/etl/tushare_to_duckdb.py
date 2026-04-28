@@ -26,9 +26,9 @@ from loguru import logger
 import pandas as pd
 
 try:
-    from tushare_duckdb_sync_scripts.utils.database_handler_util import get_tushare_client
+    from tushare_to_duckdb.tushare_duckdb_sync_scripts.utils.database_handler_util import get_tushare_client
 except ModuleNotFoundError:  # pragma: no cover - direct script fallback
-    from utils.database_handler_util import get_tushare_client
+    from tushare_to_duckdb.tushare_duckdb_sync_scripts.utils.database_handler_util import get_tushare_client
 
 try:
     import duckdb

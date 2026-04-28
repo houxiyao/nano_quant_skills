@@ -18,15 +18,15 @@ import duckdb
 from loguru import logger
 
 try:
-    from tushare_duckdb_sync_scripts.etl.tushare_to_duckdb import StructuredETLError, run_etl
+    from tushare_to_duckdb.tushare_duckdb_sync_scripts.etl.tushare_to_duckdb import StructuredETLError, run_etl
 except ModuleNotFoundError:
     try:
-        from etl.tushare_to_duckdb import StructuredETLError, run_etl
+        from tushare_to_duckdb.tushare_duckdb_sync_scripts.etl.tushare_to_duckdb import StructuredETLError, run_etl
     except ModuleNotFoundError:
         project_root = Path(__file__).resolve().parents[1]
         if str(project_root) not in sys.path:
             sys.path.insert(0, str(project_root))
-        from etl.tushare_to_duckdb import StructuredETLError, run_etl
+        from tushare_to_duckdb.tushare_duckdb_sync_scripts.etl.tushare_to_duckdb import StructuredETLError, run_etl
 
 
 def _log_event(event: str, payload: Dict[str, object]) -> None:

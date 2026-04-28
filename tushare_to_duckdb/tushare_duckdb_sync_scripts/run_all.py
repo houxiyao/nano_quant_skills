@@ -13,7 +13,7 @@ WORKSPACE_ROOT = SCRIPT_ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from tushare_duckdb_sync_scripts.common import configure_logging, log_event, resolve_log_dir  # noqa: E402
+from tushare_to_duckdb.tushare_duckdb_sync_scripts.common import configure_logging, log_event, resolve_log_dir  # noqa: E402
 
 
 GROUP_TO_SCRIPT = {
