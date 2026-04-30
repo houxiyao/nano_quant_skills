@@ -1,0 +1,13 @@
+[project]
+name = "nano-quant-skills"
+version = "0.1.0"
+description = "Quantitative trading skills and tools"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["tushare_to_clickhouse"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

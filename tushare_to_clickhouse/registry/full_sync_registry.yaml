@@ -1,0 +1,543 @@
+tables:
+  # ========== 基础信息 (none 维度) ==========
+  - source_table: stock_basic
+    target_table: stk_info
+    endpoint: stock_basic
+    dimension_type: none
+    method: query
+    pk: [ts_code]
+    order_by: [ts_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 2000
+    description: "股票基础信息"
+
+  - source_table: trade_cal
+    target_table: cal_trade
+    endpoint: trade_cal
+    dimension_type: none
+    method: query
+    pk: [exchange, cal_date]
+    order_by: [exchange, cal_date]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "交易日历"
+    params:
+      exchange: "SSE"
+      start_date: "20000101"
+      end_date: "20301231"
+
+  - source_table: namechange
+    target_table: stk_name_history
+    endpoint: namechange
+    dimension_type: none
+    method: namechange
+    pk: [ts_code, name, start_date]
+    order_by: [ts_code, start_date]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "股票曾用名"
+
+  - source_table: stock_company
+    target_table: stk_company
+    endpoint: stock_company
+    dimension_type: none
+    method: query
+    pk: [ts_code]
+    order_by: [ts_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 2000
+    description: "上市公司基本信息"
+
+  - source_table: bse_mapping
+    target_table: stk_bse_mapping
+    endpoint: bse_mapping
+    dimension_type: none
+    method: bse_mapping
+    pk: [ts_code]
+    order_by: [ts_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "北交所新旧代码对照"
+
+  - source_table: index_basic
+    target_table: idx_info
+    endpoint: index_basic
+    dimension_type: none
+    method: query
+    pk: [ts_code]
+    order_by: [ts_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "指数基本信息"
+
+  - source_table: index_classify
+    target_table: idx_classify
+    endpoint: index_classify
+    dimension_type: none
+    method: query
+    pk: [index_code, industry_name]
+    order_by: [index_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "申万行业分类"
+
+  - source_table: index_member_all
+    target_table: idx_member_all
+    endpoint: index_member_all
+    dimension_type: none
+    method: query
+    pk: [index_code, con_code]
+    order_by: [index_code, con_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 120
+    description: "指数成分股"
+
+  # ========== A股行情 (trade_date 维度) ==========
+  - source_table: daily
+    target_table: stk_daily
+    endpoint: daily
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "A股日线行情"
+
+  - source_table: weekly
+    target_table: stk_weekly
+    endpoint: weekly
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "A股周线行情"
+
+  - source_table: monthly
+    target_table: stk_monthly
+    endpoint: monthly
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "A股月线行情"
+
+  - source_table: moneyflow
+    target_table: stk_moneyflow
+    endpoint: moneyflow
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    description: "个股资金流向"
+
+  - source_table: moneyflow_ths
+    target_table: stk_moneyflow_ths
+    endpoint: moneyflow_ths
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    description: "同花顺个股资金流向"
+
+  - source_table: adj_factor
+    target_table: stk_adj_factor
+    endpoint: adj_factor
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "复权因子"
+
+  - source_table: suspend_d
+    target_table: stk_suspend
+    endpoint: suspend_d
+    dimension_type: trade_date
+    method: suspend_d
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "每日停复牌信息"
+
+  - source_table: stock_st
+    target_table: stk_st_daily
+    endpoint: stock_st
+    dimension_type: trade_date
+    method: stock_st
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "ST股票列表（每日）"
+
+  - source_table: stk_factor_pro
+    target_table: stk_factor_pro
+    endpoint: stk_factor_pro
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "股票技术面因子(专业版)"
+
+  - source_table: idx_factor_pro
+    target_table: idx_factor_pro
+    endpoint: idx_factor_pro
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "指数技术面因子(专业版)"
+
+  - source_table: cyq_perf
+    target_table: stk_cyq_perf
+    endpoint: cyq_perf
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "每日筹码及胜率"
+
+  - source_table: margin_detail
+    target_table: stk_margin
+    endpoint: margin_detail
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    description: "融资融券交易明细"
+
+  - source_table: stk_ah_comparison
+    target_table: stk_ah_comparison
+    endpoint: stk_ah_comparison
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    description: "AH股比价"
+
+  # ========== 指数数据 (trade_date 维度) ==========
+  - source_table: index_daily
+    target_table: idx_daily
+    endpoint: index_daily
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 120
+    description: "指数日线行情"
+
+  - source_table: index_weight
+    target_table: idx_weight
+    endpoint: index_weight
+    dimension_type: trade_date
+    method: query
+    pk: [index_code, con_code, trade_date]
+    order_by: [index_code, con_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    description: "指数成分和权重"
+
+  - source_table: dc_daily
+    target_table: idx_daily_dc
+    endpoint: dc_daily
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "东财指数日线"
+
+  - source_table: dc_index
+    target_table: idx_quote_dc
+    endpoint: dc_index
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, trade_date]
+    order_by: [ts_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "东财概念和行业指数行情"
+
+  - source_table: dc_member
+    target_table: idx_member_daily
+    endpoint: dc_member
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, con_code, trade_date]
+    order_by: [ts_code, con_code, trade_date]
+    partition_by: "toYYYYMM(trade_date)"
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "东财概念成分"
+
+  # ========== 财务数据 (period 维度) ==========
+  - source_table: balancesheet
+    target_table: fin_balance
+    endpoint: balancesheet_vip
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "资产负债表"
+
+  - source_table: income
+    target_table: fin_income
+    endpoint: income_vip
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "利润表"
+
+  - source_table: cashflow
+    target_table: fin_cashflow
+    endpoint: cashflow_vip
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "现金流量表"
+
+  - source_table: fina_indicator
+    target_table: fin_indicator
+    endpoint: fina_indicator_vip
+    dimension_type: period
+    method: fina_indicator_vip
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "财务指标数据"
+
+  - source_table: fina_audit
+    target_table: fin_audit
+    endpoint: fina_audit
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "财务审计意见"
+
+  - source_table: fina_mainbz
+    target_table: fin_mainbz
+    endpoint: fina_mainbz
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date, bz_item]
+    order_by: [ts_code, end_date, bz_item]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "主营业务构成"
+
+  - source_table: express
+    target_table: fin_express
+    endpoint: express_vip
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "业绩快报"
+
+  - source_table: forecast
+    target_table: fin_forecast
+    endpoint: forecast_vip
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "业绩预告"
+
+  # ========== 股本股东 (period / ann_date 维度) ==========
+  - source_table: top10_holders
+    target_table: fin_top10_holders
+    endpoint: top10_holders
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date, holder_name]
+    order_by: [ts_code, end_date, holder_name]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "前十大股东"
+
+  - source_table: top10_floatholders
+    target_table: fin_top10_float_holders
+    endpoint: top10_floatholders
+    dimension_type: period
+    method: query
+    pk: [ts_code, end_date, holder_name]
+    order_by: [ts_code, end_date, holder_name]
+    sleep: 0.3
+    mode: append
+    start_date: "20100331"
+    points: 5000
+    description: "前十大流通股东"
+
+  - source_table: share_float
+    target_table: stk_share_float
+    endpoint: share_float
+    dimension_type: trade_date
+    dimension_field: ann_date
+    method: query
+    pk: [ts_code, ann_date]
+    order_by: [ts_code, ann_date]
+    sleep: 0.15
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    allow_empty_result: true
+    description: "限售股解禁"
+
+  - source_table: stk_holdernumber
+    target_table: stk_holdernumber
+    endpoint: stk_holdernumber
+    dimension_type: trade_date
+    method: query
+    pk: [ts_code, end_date]
+    order_by: [ts_code, end_date]
+    sleep: 0.3
+    mode: append
+    start_date: "20100101"
+    points: 5000
+    description: "股东人数"
+
+  # ========== 分红融资 ==========
+  - source_table: dividend
+    target_table: stk_dividend
+    endpoint: dividend
+    dimension_type: trade_date
+    dimension_field: ann_date
+    method: query
+    pk: [ts_code, ann_date, div_type]
+    order_by: [ts_code, ann_date]
+    sleep: 0.15
+    mode: append
+    start_date: "20100101"
+    points: 2000
+    allow_empty_result: true
+    description: "分红送股数据"
+
+  - source_table: new_share
+    target_table: stk_new_share
+    endpoint: new_share
+    dimension_type: none
+    method: query
+    pk: [ts_code]
+    order_by: [ts_code]
+    sleep: 0.0
+    mode: overwrite
+    points: 2000
+    description: "IPO新股上市"
