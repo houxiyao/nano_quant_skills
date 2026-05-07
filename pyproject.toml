@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["tushare_to_clickhouse"]
+members = ["ts2ck"]
 
 [build-system]
 requires = ["hatchling"]

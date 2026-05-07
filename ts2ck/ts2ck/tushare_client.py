@@ -59,6 +59,12 @@ class TushareFetcher:
                     raise TushareError("Tushare did not return a DataFrame")
                 if df.empty:
                     return df
+                for col in df.columns:
+                    if 'date' in col.lower():
+                        try:
+                            df[col] = pd.to_datetime(df[col], format='%Y%m%d', errors='coerce')
+                        except (ValueError, TypeError):
+                            raise
                 return df.copy()
             except Exception as exc:
                 last_exc = exc

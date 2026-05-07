@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from tushare_to_clickhouse.clickhouse_client import ClickHouseManager
+from ts2ck.clickhouse_client import ClickHouseManager
 
 
 class QualityChecker:

@@ -1,4 +1,4 @@
-"""CLI entry point for tushare-to-clickhouse using Click."""
+"""CLI entry point for ts2ck using Click."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from typing import Optional
 import click
 from loguru import logger
 
-from tushare_to_clickhouse.clickhouse_client import ClickHouseManager
-from tushare_to_clickhouse.config import DEFAULT_CONFIG_PATH, SyncConfig
-from tushare_to_clickhouse.quality_checker import QualityChecker
-from tushare_to_clickhouse.registry import SyncRegistry
-from tushare_to_clickhouse.sync_engine import SyncEngine
+from ts2ck.clickhouse_client import ClickHouseManager
+from ts2ck.config import DEFAULT_CONFIG_PATH, SyncConfig
+from ts2ck.quality_checker import QualityChecker
+from ts2ck.registry import SyncRegistry
+from ts2ck.sync_engine import SyncEngine
 
 
 def _setup_logging(config: SyncConfig) -> None:
@@ -84,7 +84,7 @@ sync:
 
 logging:
   level: INFO
-  file: "~/.config/tushare_to_clickhouse/sync.log"
+  file: "~/.config/ts2ck/sync.log"
   retention_days: 30
 """
     with open(config_path, "w", encoding="utf-8") as f:
@@ -156,7 +156,7 @@ def cmd_sync_all(ctx, registry, tables, max_points):
 
     registry_path = registry
     if not registry_path:
-        default = Path(__file__).resolve().parent.parent / "registry" / "full_sync_registry.yaml"
+        default = Path(__file__).resolve().parent.parent / "registry.yaml"
         if default.exists():
             registry_path = str(default)
         else:

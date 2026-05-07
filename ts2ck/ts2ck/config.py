@@ -15,7 +15,7 @@ DEFAULT_CONFIG_PATH = Path.cwd() / "config.yaml"
 
 @dataclass
 class SyncConfig:
-    """All configuration for tushare-to-clickhouse."""
+    """All configuration for ts2ck."""
 
     # ClickHouse
     ch_host: str = "localhost"

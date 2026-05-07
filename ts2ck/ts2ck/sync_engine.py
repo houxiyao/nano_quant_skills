@@ -10,16 +10,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 from loguru import logger
 
-from tushare_to_clickhouse.clickhouse_client import ClickHouseManager
-from tushare_to_clickhouse.config import SyncConfig
-from tushare_to_clickhouse.registry import RegistryEntry, SyncRegistry
-from tushare_to_clickhouse.schema_manager import (
+from ts2ck.clickhouse_client import ClickHouseManager
+from ts2ck.config import SyncConfig
+from ts2ck.registry import SyncRegistry
+from ts2ck.schema_manager import (
     align_dataframe_to_schema,
-    coerce_date_columns,
-    dedupe_by_pk,
-    sanitize_all_nan_columns,
 )
-from tushare_to_clickhouse.tushare_client import TushareFetcher
+from ts2ck.tushare_client import TushareFetcher
 
 
 class SyncError(Exception):
@@ -63,7 +60,6 @@ class SyncEngine:
         disable_safe_trade_date: bool = False,
         order_by: Optional[List[str]] = None,
         partition_by: Optional[str] = None,
-        pk: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Sync a single Tushare endpoint to ClickHouse."""
         # Resolve defaults from config
@@ -137,7 +133,7 @@ class SyncEngine:
                     df, source, target, dim, dimension_type, allow_empty_result
                 )
                 total_rows, loaded = self._write_batch(
-                    df, target, mode, first_batch, order_by, partition_by, pk
+                    df, target, mode, first_batch, order_by, partition_by
                 )
                 first_batch = False
                 processed += 1
@@ -202,7 +198,6 @@ class SyncEngine:
                     allow_empty_result=entry.allow_empty_result,
                     order_by=entry.order_by or None,
                     partition_by=entry.partition_by,
-                    pk=entry.pk or None,
                 )
                 results.append(result)
                 logger.info(
@@ -298,7 +293,6 @@ class SyncEngine:
         first_batch: bool,
         order_by: List[str],
         partition_by: Optional[str],
-        pk: Optional[List[str]] = None,
     ) -> Tuple[int, int]:
         """Write DataFrame to ClickHouse. Returns (total_rows, loaded_rows)."""
         if df.empty:
@@ -308,30 +302,20 @@ class SyncEngine:
             total = int(result.result_rows[0][0]) if result.result_rows else 0
             return total, 0
 
-        # Sanitize all-NaN float columns before any schema operations
-        df = sanitize_all_nan_columns(df)
-
         loaded = len(df)
 
         if mode == "overwrite" and first_batch:
             self.ch.drop_table(target_table)
 
         if not self.ch.table_exists(target_table):
-            date_cols = self.ch.create_table_from_df(
+            self.ch.create_table_from_df(
                 target_table, df, order_by=order_by, partition_by=partition_by
             )
-            if date_cols:
-                df = coerce_date_columns(df, date_cols)
             # Normalize NaN → None for new tables
             df = df.where(pd.notna(df), None)
         else:
             existing_cols = self.ch.get_columns(target_table)
-            date_cols = self.ch.get_date_columns(target_table)
-            df = align_dataframe_to_schema(df, existing_cols, date_cols)
-
-        # Dedupe by PK if provided
-        if pk:
-            df = dedupe_by_pk(df, pk, target_table)
+            df = align_dataframe_to_schema(df, existing_cols)
 
         self.ch.insert_dataframe(target_table, df, batch_size=self.config.batch_size)
 

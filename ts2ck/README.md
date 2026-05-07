@@ -14,7 +14,7 @@
 ## 安装
 
 ```bash
-cd tushare_to_clickhouse
+cd ts2ck
 pip install -e .
 ```
 
@@ -25,7 +25,7 @@ pip install -e .
 ### 1. 初始化配置
 
 ```bash
-tushare-to-clickhouse init
+ts2ck init
 ```
 
 编辑生成的配置文件 `config.yaml`：
@@ -52,12 +52,12 @@ sync:
 
 ```bash
 # 全量覆盖（无维度表，如股票列表）
-tushare-to-clickhouse sync \
+ts2ck sync \
   --endpoint stock_basic --target-table stk_info \
   --dimension-type none --mode overwrite
 
 # 增量同步（按交易日维度，如日线行情）
-tushare-to-clickhouse sync \
+ts2ck sync \
   --endpoint daily --target-table stk_daily \
   --dimension-type trade_date --start-date 20240101 --sync-all --sleep 0.3
 ```
@@ -66,19 +66,19 @@ tushare-to-clickhouse sync \
 
 ```bash
 # 同步注册表中 5000 积分以内的所有表
-tushare-to-clickhouse sync-all --registry registry/full_sync_registry.yaml
+ts2ck sync-all --registry registry.yaml
 
 # 只同步指定表
-tushare-to-clickhouse sync-all --tables stk_daily,moneyflow
+ts2ck sync-all --tables stk_daily,moneyflow
 
 # 按积分过滤（如只同步 2000 积分以内）
-tushare-to-clickhouse sync-all --max-points 2000
+ts2ck sync-all --max-points 2000
 ```
 
 ### 4. 数据质检
 
 ```bash
-tushare-to-clickhouse check \
+ts2ck check \
   --table stk_daily --pk ts_code,trade_date --date-col trade_date --format markdown
 ```
 
@@ -86,10 +86,10 @@ tushare-to-clickhouse check \
 
 ```bash
 # 查看所有同步状态
-tushare-to-clickhouse status
+ts2ck status
 
 # 查看指定表的状态
-tushare-to-clickhouse status --source-table daily
+ts2ck status --source-table daily
 ```
 
 ## 注册表格式
@@ -142,11 +142,11 @@ WHERE source_table = 'daily' AND is_sync = 1
 ## CLI 完整命令参考
 
 ```
-tushare-to-clickhouse init [--config PATH] [--force]
-tushare-to-clickhouse sync --endpoint ENDPOINT [options...]
-tushare-to-clickhouse sync-all [--registry PATH] [--tables A,B] [--max-points N]
-tushare-to-clickhouse check --table TABLE --pk COL1,COL2 [--date-col COL] [--format text|json|markdown]
-tushare-to-clickhouse status [--source-table TABLE]
+ts2ck init [--config PATH] [--force]
+ts2ck sync --endpoint ENDPOINT [options...]
+ts2ck sync-all [--registry PATH] [--tables A,B] [--max-points N]
+ts2ck check --table TABLE --pk COL1,COL2 [--date-col COL] [--format text|json|markdown]
+ts2ck status [--source-table TABLE]
 ```
 
 ## 许可

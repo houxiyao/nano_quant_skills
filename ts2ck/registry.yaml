@@ -57,8 +57,8 @@ tables:
     endpoint: bse_mapping
     dimension_type: none
     method: bse_mapping
-    pk: [ts_code]
-    order_by: [ts_code]
+    pk: [o_code]
+    order_by: [o_code]
     sleep: 0.0
     mode: overwrite
     points: 120
@@ -93,8 +93,8 @@ tables:
     endpoint: index_member_all
     dimension_type: none
     method: query
-    pk: [index_code, con_code]
-    order_by: [index_code, con_code]
+    pk: [ts_code]
+    order_by: [ts_code]
     sleep: 0.0
     mode: overwrite
     points: 120

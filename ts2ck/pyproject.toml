@@ -1,5 +1,5 @@
 [project]
-name = "tushare-to-clickhouse"
+name = "ts2ck"
 version = "0.1.0"
 description = "Sync Tushare data to ClickHouse"
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tushare-to-clickhouse = "tushare_to_clickhouse.cli:main"
+ts2ck = "ts2ck.cli:main"
 
 [build-system]
 requires = ["hatchling"]

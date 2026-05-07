@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional, Set
+from typing import List, Optional
 
 import clickhouse_connect
 import pandas as pd
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver import httputil
 from loguru import logger
 
-from tushare_to_clickhouse.config import SyncConfig
-from tushare_to_clickhouse.schema_manager import (
+from ts2ck.config import SyncConfig
+from ts2ck.schema_manager import (
     build_create_table_sql,
-    coerce_date_columns,
     infer_clickhouse_schema,
 )
 
@@ -34,6 +34,7 @@ class ClickHouseManager:
                 username=self._config.ch_user,
                 password=self._config.ch_password,
                 database=self._config.ch_database,
+                pool_mgr=httputil.get_pool_manager(),
             )
             logger.info(
                 f"Connected to ClickHouse at "
@@ -64,15 +65,6 @@ class ClickHouseManager:
         )
         return [row[0] for row in result.result_rows]
 
-    def get_date_columns(self, table: str) -> Set[str]:
-        db = self.client.database or "default"
-        result = self.client.query(
-            "SELECT name FROM system.columns WHERE database = {db:String} AND table = {tbl:String} "
-            "AND type IN ('Date', 'DateTime', 'Nullable(Date)', 'Nullable(DateTime)')",
-            parameters={"db": db, "tbl": table},
-        )
-        return {row[0] for row in result.result_rows}
-
     # ------------------------------------------------------------------
     # DDL / DML
     # ------------------------------------------------------------------
@@ -88,18 +80,13 @@ class ClickHouseManager:
         order_by: List[str],
         partition_by: Optional[str] = None,
         engine: str = "MergeTree",
-    ) -> Set[str]:
-        """Create a ClickHouse table from a DataFrame's schema.
-
-        Returns the set of columns inferred as Date type, so callers can
-        coerce the DataFrame before inserting.
-        """
-        schema, date_cols = infer_clickhouse_schema(df)
+    ) -> None:
+        """Create a ClickHouse table from a DataFrame's schema."""
+        schema = infer_clickhouse_schema(df, order_by)
         sql = build_create_table_sql(table, schema, order_by, engine, partition_by)
         self.client.command(sql)
         order_by_str = ", ".join(f'"{c}"' for c in order_by)
         logger.info(f"Created table {table} with ORDER BY ({order_by_str})")
-        return date_cols
 
     def insert_dataframe(
         self, table: str, df: pd.DataFrame, batch_size: Optional[int] = None
