@@ -4,23 +4,44 @@
 
 ## 模块依赖关系
 
-- `tushare_duckdb_sync_skills`：上游数据生产 **skill 文档**（教 Agent 如何把 Tushare 数据写入 DuckDB）。
-- `tushare_duckdb_sync_scripts`：上面 skill 派生的可执行 cron 调度脚本（运行时产物）。
+- `ts2ck`：上游数据同步引擎，将 Tushare 数据写入 ClickHouse（替代原 `tushare_to_duckdb`）。
+- `tushare_to_duckdb/tushare_duckdb_sync_skills`：~~上游数据生产 skill 文档~~（已弃用，迁移至 `ts2ck`）。
+- `tushare_to_duckdb/tushare_duckdb_sync_scripts`：~~cron 调度脚本~~（已弃用，迁移至 `ts2ck`）。
 - `nano-search-mcp`：外部证据模块，提供公告/年报/政策/IR 等检索与正文抓取。
-- `2min-company-analysis`：分析与编排模块，消费 DuckDB 数据，并可选消费 `nano-search-mcp` 的外部证据。
+- `2min-company-analysis`：分析与编排模块，消费 ClickHouse 数据，并可选消费 `nano-search-mcp` 的外部证据。
 
-推荐依赖链路：`tushare_duckdb_sync_skills/scripts -> nano-search-mcp -> 2min-company-analysis`。
+推荐依赖链路：`ts2ck -> nano-search-mcp -> 2min-company-analysis`。
+
+## 环境搭建（uv workspace）
+
+本项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖，采用 workspace 模式组织子项目。
+
+```bash
+# 安装 uv（如尚未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 安装所有 workspace 成员
+uv sync --all-packages
+
+# 只安装指定子项目
+uv sync --package ts2ck
+```
+
+配置文件位于 `config.yaml`，初始化：
+
+```bash
+uv run ts2ck init
+```
 
 ## 文档索引（层级）
 
 ### 1) 数据同步模块
 
-- [tushare_duckdb_sync_skills](tushare_duckdb_sync_skills/)
-  - 作用：从 Tushare Pro 同步数据到本地 DuckDB（skill 文档 + 自包含脚本）。
-  - 文档入口：[tushare_duckdb_sync_skills/README.md](tushare_duckdb_sync_skills/README.md)
-- [tushare_duckdb_sync_scripts](tushare_duckdb_sync_scripts/)
-  - 作用：由上面 skill 产出的 cron 调度脚本集合（按 `trade_date` / `period` / `snapshot` 三类节奏批量同步）。
-  - 文档入口：[tushare_duckdb_sync_scripts/README.md](tushare_duckdb_sync_scripts/README.md)
+- [ts2ck](ts2ck/)
+  - 作用：将 Tushare Pro 数据同步到 ClickHouse，支持全量/增量/断点续传。
+  - 文档入口：[ts2ck/README.md](ts2ck/README.md)
+- ~~[tushare_to_duckdb/tushare_duckdb_sync_skills](tushare_to_duckdb/tushare_duckdb_sync_skills/)~~（已弃用，迁移至 `ts2ck`）
+- ~~[tushare_to_duckdb/tushare_duckdb_sync_scripts](tushare_to_duckdb/tushare_duckdb_sync_scripts/)~~（已弃用，迁移至 `ts2ck`）
 
 ### 2) 数据搜索模块
 
@@ -63,20 +84,26 @@
 
 ## 推荐使用顺序
 
-1. 先按 [tushare_duckdb_sync_skills](tushare_duckdb_sync_skills/) 完成环境初始化和 DuckDB 数据同步（或直接用 [tushare_duckdb_sync_scripts](tushare_duckdb_sync_scripts/) 跑 cron 调度脚本）。
+1. 先按 [ts2ck](ts2ck/) 完成环境初始化和 ClickHouse 数据同步。
 2. 如需公告、年报、政策、IR 等外部证据，安装并使用 [nano-search-mcp](nano-search-mcp/)。
 3. 再进入 [2min-company-analysis/README.md](2min-company-analysis/README.md) 选择总编排或单独 look/ask。
 
 最小联动示例：
 
 ```bash
-conda activate legonanobot
+# 1) 初始化 ts2ck 配置
+uv run ts2ck init
 
-# 1) 安装搜索模块（可编辑模式）
-pip install -e ./nano-search-mcp
+# 2) 同步数据（单表）
+uv run ts2ck sync \
+  --endpoint daily --target-table stk_daily \
+  --dimension-type trade_date --start-date 20240101 --sync-all
 
-# 2) 执行公司分析总编排
-python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
+# 3) 或批量同步注册表中所有表
+uv run ts2ck sync-all --registry ts2ck/registry.yaml
+
+# 4) 执行公司分析总编排
+uv run python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orchestrator.py \
   --stock 000001.SZ \
   --as-of-date 2026-04-24 \
   --include-eight-questions
@@ -87,14 +114,16 @@ python 2min-company-analysis/seven-look-eight-question/scripts/seven_looks_orche
 ```text
 nano_quant_skills/
 ├── README.md
-├── tushare_duckdb_sync_skills/    # AI skill：教 agent 如何同步 Tushare→DuckDB
-├── tushare_duckdb_sync_scripts/   # 由上面 skill 派生的 cron 调度脚本
+├── pyproject.toml                 # uv workspace root
+├── uv.lock
+├── ts2ck/         # Tushare → ClickHouse 同步引擎（uv workspace member）
 ├── nano-search-mcp/
-└── 2min-company-analysis/
-    ├── README.md
-    ├── look-01-profit-quality/ ... look-07-roe-capital-return/
-    ├── ask-q1-industry-prospect/ ... ask-q8-future-plan/
-    └── seven-look-eight-question/
+├── 2min-company-analysis/
+│   ├── README.md
+│   ├── look-01-profit-quality/ ... look-07-roe-capital-return/
+│   ├── ask-q1-industry-prospect/ ... ask-q8-future-plan/
+│   └── seven-look-eight-question/
+└── tushare_to_duckdb/             # （已弃用，迁移至 `ts2ck`）
 ```
 
 ## 作为 AI Skill 使用

@@ -1,0 +1,31 @@
+# Company Analysis MCP Server 配置文件
+# 配置优先级: CLI 参数 > 本文件 > 环境变量 > 内置默认值
+# 文件查找顺序: --config 指定路径 > ./config.yaml > ./company-analysis-mcp.yaml > ~/.config/company-analysis-mcp/config.yaml
+
+database:
+  # ClickHouse 连接配置（对齐 ts2ck 命名风格）
+  ch_host: "localhost"
+  ch_port: 8123
+  ch_user: "default"
+  ch_password: ""
+  ch_database: "tushare_data"
+  # 逻辑表名到物理表名映射（JSON字符串或JSON文件路径）
+  # 当 ClickHouse 中的实际表名与逻辑表名不同时使用
+  # table_map: '{"fin_income": "my_fin_income_table"}'
+
+server:
+  # MCP transport 类型: streamable-http 或 stdio
+  transport: "stdio"
+  # HTTP 监听地址（仅 streamable-http 模式）
+  host: "127.0.0.1"
+  # HTTP 监听端口（仅 streamable-http 模式）
+  port: 8001
+
+analysis:
+  # 默认回看年数（个别维度有自己的默认值）
+  default_lookback_years: 3
+  # 七看编排并行线程数
+  max_workers: 4
+  # nano-search-mcp 端点（用于八问外部证据采集）
+  # 留空则八问的外部证据采集自动降级（graceful degradation）
+  # nano_search_endpoint: "http://127.0.0.1:8000"

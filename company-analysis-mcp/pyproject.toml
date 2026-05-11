@@ -1,0 +1,25 @@
+[project]
+name = "company-analysis-mcp"
+version = "0.1.0"
+description = "MCP service for A-share company analysis (seven looks + eight questions)"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "clickhouse-connect>=0.7.0",
+    "pyyaml>=6.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+nano-search = ["nano-search-mcp"]
+dev = ["pytest>=8.3.0"]
+
+[project.scripts]
+company-analysis-mcp = "company_analysis_mcp.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
